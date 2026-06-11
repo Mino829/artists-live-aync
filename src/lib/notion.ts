@@ -29,7 +29,8 @@ export async function validateNotionConnection(apiKey: string, databaseId: strin
 async function ensureDatabaseProperties(notion: Client, databaseId: string): Promise<string> {
   const dbResponse = await notion.databases.retrieve({ database_id: databaseId });
   if (!('properties' in dbResponse)) {
-    throw new Error('Could not retrieve full database properties. Please check if your database exists and the integration is shared with editing permissions.');
+    console.error('Notion API returned a partial database object:', dbResponse);
+    throw new Error(`Could not retrieve full database properties (Response object type: ${dbResponse.object}). Please check if your database exists, the integration is shared with editing permissions, and that you have passed a Database ID rather than a Page ID.`);
   }
   const properties = (dbResponse as any).properties;
 
