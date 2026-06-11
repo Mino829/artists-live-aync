@@ -46,6 +46,15 @@ const PRESETS = [
     selectorLink: 'a',
   },
   {
+    name: 'Official髭男dism (Official Hige Dandism)',
+    liveUrl: 'https://higedan.com/news/7/?range=future_event_end_time&sort=asc',
+    selectorItem: '.list--live .inner',
+    selectorTitle: '.tit',
+    selectorDate: '.date',
+    selectorVenue: '.tit',
+    selectorLink: 'a',
+  },
+  {
     name: 'Custom Artist (Manually Configure)',
     liveUrl: '',
     selectorItem: '',
@@ -185,11 +194,20 @@ export default function Dashboard() {
     setConfigFeedback(null);
     addLog('Connecting and validating Notion credentials...', 'info');
 
+    // Parse Database ID if a full URL was pasted
+    let parsedDbId = notionDatabaseId.trim();
+    const urlMatch = parsedDbId.match(/notion\.so\/(?:[^/]+\/)?([a-f0-9]{32})/i);
+    if (urlMatch) {
+      parsedDbId = urlMatch[1];
+      setNotionDatabaseId(parsedDbId); // Update input field value
+      addLog(`Extracted Notion Database ID: ${parsedDbId}`, 'info');
+    }
+
     try {
       const res = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notionApiKey, notionDatabaseId }),
+        body: JSON.stringify({ notionApiKey, notionDatabaseId: parsedDbId }),
       });
 
       const data = await res.json();
@@ -474,11 +492,11 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="form-group">
-                <label className="form-label">Database ID</label>
+                <label className="form-label">Database ID (or Full URL)</label>
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="e.g. 1a2b3c4d5e6f..."
+                  placeholder="Paste URL or 32-character ID"
                   value={notionDatabaseId}
                   onChange={(e) => setNotionDatabaseId(e.target.value)}
                   required
