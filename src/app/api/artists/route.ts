@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getArtists, saveArtist, deleteArtist } from '@/lib/db';
 import { verifyAuth, unauthorizedResponse } from '@/lib/auth';
+import { runSync } from '@/lib/sync';
 
 export async function GET(request: Request) {
   if (!verifyAuth(request)) {
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
 
     // Generate id if not editing an existing artist
     let artistId = id;
+    let isNew = false;
     if (!artistId) {
       const slug = name
         .trim()
@@ -38,6 +40,10 @@ export async function POST(request: Request) {
         .replace(/[^a-z0-9\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf]+/gi, '-')
         .replace(/(^-|-$)/g, '');
       artistId = slug || Math.random().toString(36).substring(2, 9);
+      isNew = true;
+    } else {
+      const exists = getArtists().some((a) => a.id === artistId);
+      isNew = !exists;
     }
 
     const newArtist = {
@@ -56,8 +62,14 @@ export async function POST(request: Request) {
 
     saveArtist(newArtist);
 
+    if (isNew) {
+      console.log(`Newly registered artist: ${newArtist.name}. Triggering initial sync...`);
+      await runSync(artistId, 'manual');
+    }
+
     return NextResponse.json({ success: true, artist: newArtist });
   } catch (error) {
+    console.error('Failed to save artist:', error);
     return NextResponse.json({ error: 'Failed to save artist' }, { status: 500 });
   }
 }
