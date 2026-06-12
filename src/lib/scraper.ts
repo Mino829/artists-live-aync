@@ -61,10 +61,40 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
 
   const content = await response.text();
 
-  // Try to parse as JSON first (to support dynamic APIs like Sony Music / King Gnu)
+  // Try to parse as JSON / JSONP first (to support dynamic APIs like Sony Music / King Gnu)
   try {
-    const jsonData = JSON.parse(content);
-    const list = jsonData.list || (Array.isArray(jsonData) ? jsonData : null);
+    let jsonString = content.trim();
+    
+    // Clean up JSONP callback wrapper if present (e.g. callback({...}); or callback({...}))
+    const jsonpMatch = jsonString.match(/^[a-zA-Z0-9_\$]+\(([\s\S]+)\);?$/);
+    if (jsonpMatch) {
+      jsonString = jsonpMatch[1].trim();
+    }
+    
+    const jsonData = JSON.parse(jsonString);
+    
+    // Find the array of items inside the JSON response
+    let list: any[] | null = null;
+    if (Array.isArray(jsonData)) {
+      list = jsonData;
+    } else if (jsonData.items && Array.isArray(jsonData.items.articles)) {
+      list = jsonData.items.articles;
+    } else if (jsonData.list && Array.isArray(jsonData.list)) {
+      list = jsonData.list;
+    } else if (jsonData.articles && Array.isArray(jsonData.articles)) {
+      list = jsonData.articles;
+    } else if (jsonData.items && Array.isArray(jsonData.items)) {
+      list = jsonData.items;
+    } else {
+      // Fallback: search for any array property in the root of the JSON object
+      for (const val of Object.values(jsonData)) {
+        if (Array.isArray(val)) {
+          list = val;
+          break;
+        }
+      }
+    }
+
     if (list && Array.isArray(list)) {
       const results: ScrapedEvent[] = [];
       for (const item of list) {
