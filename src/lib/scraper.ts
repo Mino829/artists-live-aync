@@ -65,10 +65,18 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
   try {
     let jsonString = content.trim();
     
-    // Clean up JSONP callback wrapper if present (e.g. callback({...}); or callback({...}))
-    const jsonpMatch = jsonString.match(/^[a-zA-Z0-9_\$]+\(([\s\S]+)\);?$/);
-    if (jsonpMatch) {
-      jsonString = jsonpMatch[1].trim();
+    // Check if the content is HTML and contains __NEXT_DATA__
+    if (content.includes('__NEXT_DATA__')) {
+      const match = content.match(/<script\s+id="__NEXT_DATA__"\s+type="application/json">(.*?)<\/script>/s);
+      if (match) {
+        jsonString = match[1].trim();
+      }
+    } else {
+      // Clean up JSONP callback wrapper if present (e.g. callback({...}); or callback({...}))
+      const jsonpMatch = jsonString.match(/^[a-zA-Z0-9_\$]+\(([\s\S]+)\);?$/);
+      if (jsonpMatch) {
+        jsonString = jsonpMatch[1].trim();
+      }
     }
     
     const jsonData = JSON.parse(jsonString);
@@ -85,6 +93,27 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
       list = jsonData.articles;
     } else if (jsonData.items && Array.isArray(jsonData.items)) {
       list = jsonData.items;
+    } else if (jsonData.props?.pageProps && typeof jsonData.props.pageProps === 'object') {
+      // Support for Next.js pageProps data structure (e.g., Pasocom Music Club)
+      const pageProps = jsonData.props.pageProps;
+      if (Array.isArray(pageProps.posts)) {
+        list = pageProps.posts;
+      } else if (Array.isArray(pageProps.articles)) {
+        list = pageProps.articles;
+      } else if (Array.isArray(pageProps.news)) {
+        list = pageProps.news;
+      } else {
+        // Find the largest array in pageProps as a fallback
+        let largestArray: any[] | null = null;
+        for (const val of Object.values(pageProps)) {
+          if (Array.isArray(val)) {
+            if (!largestArray || val.length > largestArray.length) {
+              largestArray = val;
+            }
+          }
+        }
+        list = largestArray;
+      }
     } else {
       // Fallback: search for any array property in the root of the JSON object
       for (const val of Object.values(jsonData)) {
@@ -98,12 +127,21 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
     if (list && Array.isArray(list)) {
       const results: ScrapedEvent[] = [];
       for (const item of list) {
-        const title = cleanText(item.title || '');
-        const date = cleanText(item.date || '');
-        const category = cleanText(item.category || item.venue || '');
+        const title = cleanText(item.title || item.name || item.subject || '');
+        const date = cleanText(item.date || item.publishedAt || item.createdAt || '');
+        
+        let category = '';
+        if (item.category && typeof item.category === 'object') {
+          category = cleanText(item.category.name || item.category.slug || '');
+        } else {
+          category = cleanText(item.category || item.venue || '');
+        }
         
         let link = liveUrl;
-        if (item.id) {
+        if (item.slug) {
+          // If the item has a slug, generate a slug URL
+          link = `${liveUrl.replace(/\/$/, '')}?post=${item.slug}`;
+        } else if (item.id) {
           if (liveUrl.includes('kinggnu')) {
             link = `https://kinggnu.jp/news/in.html?id=${item.id}`;
           } else {
