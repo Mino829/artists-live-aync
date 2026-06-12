@@ -13,7 +13,7 @@ export interface NotionSyncItem {
  */
 export async function validateNotionConnection(apiKey: string, databaseId: string): Promise<boolean> {
   try {
-    const notion = new Client({ auth: apiKey });
+    const notion = new Client({ auth: apiKey, notionVersion: '2022-06-28' });
     await notion.databases.retrieve({ database_id: databaseId });
     return true;
   } catch (error) {
@@ -81,7 +81,7 @@ export async function syncEventToNotion(
   databaseId: string,
   item: NotionSyncItem
 ): Promise<string> {
-  const notion = new Client({ auth: apiKey });
+  const notion = new Client({ auth: apiKey, notionVersion: '2022-06-28' });
 
   // 1. Ensure columns exist and get the Title column name
   const titleColumnName = await ensureDatabaseProperties(notion, databaseId);
