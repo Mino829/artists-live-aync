@@ -26,7 +26,7 @@ export async function validateNotionConnection(apiKey: string, databaseId: strin
  * Ensures the Notion database has the required properties, creating them if missing.
  * Returns the name of the Title property.
  */
-async function ensureDatabaseProperties(notion: Client, databaseId: string): Promise<string> {
+async function ensureDatabaseProperties(notion: Client, apiKey: string, databaseId: string): Promise<string> {
   const dbResponse = await notion.databases.retrieve({ database_id: databaseId });
   if (!('properties' in dbResponse)) {
     console.error('Notion API returned a partial database object:', dbResponse);
@@ -58,11 +58,24 @@ async function ensureDatabaseProperties(notion: Client, databaseId: string): Pro
   // If any are missing, update the database schema
   if (Object.keys(missingProps).length > 0) {
     try {
-      await notion.databases.update({
-        database_id: databaseId,
-        properties: missingProps,
-      } as any);
-      console.log('Successfully updated Notion database schema with missing properties:', Object.keys(missingProps));
+      const res = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Notion-Version': '2022-06-28',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          properties: missingProps,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('Failed to update Notion database properties directly:', errorData);
+      } else {
+        console.log('Successfully updated Notion database schema directly with missing properties:', Object.keys(missingProps));
+      }
     } catch (error) {
       console.error('Failed to update database schema (ensure you gave full editing permissions to the Integration):', error);
       // We still try to proceed, as the user might have custom columns set up manually
@@ -84,7 +97,7 @@ export async function syncEventToNotion(
   const notion = new Client({ auth: apiKey, notionVersion: '2022-06-28' });
 
   // 1. Ensure columns exist and get the Title column name
-  const titleColumnName = await ensureDatabaseProperties(notion, databaseId);
+  const titleColumnName = await ensureDatabaseProperties(notion, apiKey, databaseId);
 
   // 2. Prepare page properties
   const properties: Record<string, any> = {
