@@ -47,7 +47,7 @@ export async function POST(request: Request) {
       try {
         console.log(`Starting scrape for artist: ${artist.name}`);
         // 2. Perform scraping
-        const scrapedItems = await scrapeLiveInfo({
+        let scrapedItems = await scrapeLiveInfo({
           liveUrl: artist.liveUrl,
           selectorItem: artist.selectorItem,
           selectorTitle: artist.selectorTitle,
@@ -55,6 +55,12 @@ export async function POST(request: Request) {
           selectorVenue: artist.selectorVenue,
           selectorLink: artist.selectorLink,
         });
+
+        // Limit to the latest 5 items on the first successful sync
+        if (artist.lastSyncedAt === null) {
+          console.log(`First sync for artist ${artist.name}. Limiting to the latest 5 items.`);
+          scrapedItems = scrapedItems.slice(0, 5);
+        }
 
         // 3. Map scraped items to database events
         const nowStr = new Date().toISOString();
