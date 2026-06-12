@@ -67,7 +67,8 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
     
     // Check if the content is HTML and contains __NEXT_DATA__
     if (content.includes('__NEXT_DATA__')) {
-      const match = content.match(/<script\s+id="__NEXT_DATA__"\s+type="application/json">(.*?)<\/script>/s);
+      const regex = new RegExp('<script\\s+id="__NEXT_DATA__"\\s+type="application/json">([\\s\\S]*?)</script>');
+      const match = content.match(regex);
       if (match) {
         jsonString = match[1].trim();
       }
