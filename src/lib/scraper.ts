@@ -59,8 +59,50 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
     throw new Error(`Failed to fetch page. HTTP Status: ${response.status} ${response.statusText}`);
   }
 
-  const html = await response.text();
-  const $ = cheerio.load(html);
+  const content = await response.text();
+
+  // Try to parse as JSON first (to support dynamic APIs like Sony Music / King Gnu)
+  try {
+    const jsonData = JSON.parse(content);
+    const list = jsonData.list || (Array.isArray(jsonData) ? jsonData : null);
+    if (list && Array.isArray(list)) {
+      const results: ScrapedEvent[] = [];
+      for (const item of list) {
+        const title = cleanText(item.title || '');
+        const date = cleanText(item.date || '');
+        const category = cleanText(item.category || item.venue || '');
+        
+        let link = liveUrl;
+        if (item.id) {
+          if (liveUrl.includes('kinggnu')) {
+            link = `https://kinggnu.jp/news/in.html?id=${item.id}`;
+          } else {
+            link = `${liveUrl}?id=${item.id}`;
+          }
+        } else if (item.link) {
+          try {
+            link = new URL(item.link, liveUrl).href;
+          } catch (e) {
+            link = item.link;
+          }
+        }
+        
+        if (title) {
+          results.push({
+            title,
+            date,
+            venue: category,
+            link,
+          });
+        }
+      }
+      return results;
+    }
+  } catch (jsonError) {
+    // Fail silently and fallback to HTML parsing
+  }
+
+  const $ = cheerio.load(content);
   const items = $(selectorItem);
 
   if (items.length === 0) {
