@@ -13,6 +13,7 @@ The scraper uses **Cheerio** to parse static HTML fetched from the artist's offi
 * **Relative Link Resolution:** Automatically resolves relative links (e.g. `/news/123`) to absolute URLs using the base `liveUrl`.
 * **Deterministic ID Generation (`generateEventId`):**
   Generates an MD5 hash of `${artistId}-${normalizedTitle}-${normalizedDate}` to uniquely identify an event. If the event is scraped again, it matches the existing ID, preventing duplicate insertions.
+* **JSON/JSONP Auto-Detection:** Automatically detects if a URL returns JSON or JSONP (e.g., wrapped in `callback(...)`). It extracts the raw JSON, dynamically searches for arrays (like `items.articles` in Sony Music's API layout), and parses it directly, bypassing Cheerio.
 
 ---
 
@@ -44,6 +45,9 @@ The application exposes Next.js Route Handlers to perform operations:
 * **`POST /api/scrape`**:
   * Triggers the scraper for one or all artists.
   * Writes new events to `data/db.json`.
+  * **Smart Differential Sync:**
+    * On the **first sync** for an artist, it slices the list to only save and sync the **latest 5 items**.
+    * On **subsequent syncs**, it scans the list from newest to oldest and finds the first item that is already in our database. It discards everything below it (since they are older than what we have) and only syncs new articles published since the last sync.
   * Syncs unsynced events to Notion and saves the resulting `notionPageId` locally.
 * **`POST /api/scrape/test`**:
   * Simulates a scrape without saving any data or touching Notion. Used to test CSS selector configurations.

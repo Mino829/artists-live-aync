@@ -11,6 +11,7 @@ import {
 } from '@/lib/db';
 import { scrapeLiveInfo, generateEventId } from '@/lib/scraper';
 import { syncEventToNotion } from '@/lib/notion';
+import { sendNotifications } from '@/lib/notification';
 
 export async function POST(request: Request) {
   try {
@@ -104,6 +105,19 @@ export async function POST(request: Request) {
 
         // 4. Save events locally (preserves existing Notion IDs for duplicates)
         saveEvents(artistEvents);
+
+        // Send notifications for newly scraped events
+        if (artistEvents.length > 0) {
+          console.log(`Sending notifications for ${artistEvents.length} new events of ${artist.name}`);
+          const currentConfig = readDb().config;
+          await sendNotifications(currentConfig, artistEvents.map(e => ({
+            artistName: e.artistName,
+            title: e.title,
+            date: e.date,
+            venue: e.venue,
+            link: e.link
+          })));
+        }
 
         // 5. Query updated database to check which events are still unsynced
         const updatedDb = readDb();

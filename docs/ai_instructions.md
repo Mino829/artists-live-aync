@@ -8,7 +8,7 @@ This file serves as a system prompt/instruction set for **future AI coding assis
 
 * **Frontend:** Next.js 16+ (App Router, Client Components using `'use client'`).
 * **Styling:** CSS variables defined in `src/app/globals.css`. Do not add Tailwind CSS unless explicitly requested. Maximize sleek, premium dark layouts.
-* **Scraper:** Static scraping using `cheerio`. Dynamic JS-rendered pages are not supported. If a site is dynamically loaded, the selectors will fail.
+* **Scraper:** Static scraping using `cheerio`. Dynamic JS-rendered pages are not supported by the HTML parser. However, the scraper automatically detects JSON/JSONP API requests and parses them directly, making it compatible with dynamic pages that expose their JSON data feed (such as King Gnu / Sony Music APIs).
 * **Database:** Single file local JSON database (`data/db.json`) handled by `src/lib/db.ts`. File reading/writing is synchronous using Node's `fs`. Do not add heavy SQL databases unless requested.
 
 ---
@@ -24,6 +24,8 @@ This file serves as a system prompt/instruction set for **future AI coding assis
   * **Rule:** The URL extractor regex in `src/app/page.tsx` must support all of these forms and strip hyphens (`-`) from the final database ID before registering.
 * **API Validation vs. Page Syncing:**
   `validateNotionConnection` checks connectivity by retrieving the database metadata. Even if the database is a "Synced Database" (read-only), the retrieve call succeeds. Thus, validation returns `true` but syncing will fail. The syncer must check for `properties` at the time of writing.
+* **Smart Incremental Sync:**
+  The scraper is designed to perform a smart differential sync. When running subsequent syncs, it finds the first matched synced event on the page and discards everything below it, ensuring only newly published events are added to Notion. On the very first run (where `lastSyncedAt` is `null`), it limits imports to the latest 5 items.
 
 ---
 

@@ -8,6 +8,11 @@ export async function GET() {
     return NextResponse.json({
       configured: !!(config.notionApiKey && config.notionDatabaseId),
       notionDatabaseId: config.notionDatabaseId || '',
+      discordWebhookUrl: config.discordWebhookUrl || '',
+      slackWebhookUrl: config.slackWebhookUrl || '',
+      lineChannelAccessToken: config.lineChannelAccessToken || '',
+      lineUserId: config.lineUserId || '',
+      notificationEnabled: config.notificationEnabled || false,
     });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to retrieve configuration' }, { status: 500 });
@@ -16,9 +21,24 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { notionApiKey, notionDatabaseId } = await request.json();
+    const {
+      notionApiKey,
+      notionDatabaseId,
+      discordWebhookUrl,
+      slackWebhookUrl,
+      lineChannelAccessToken,
+      lineUserId,
+      notificationEnabled
+    } = await request.json();
 
-    if (!notionApiKey || !notionDatabaseId) {
+    let finalApiKey = notionApiKey;
+    const existingConfig = getConfig();
+
+    if (!finalApiKey && existingConfig.notionApiKey) {
+      finalApiKey = existingConfig.notionApiKey;
+    }
+
+    if (!finalApiKey || !notionDatabaseId) {
       return NextResponse.json(
         { error: 'Both Notion Integration Token and Database ID are required.' },
         { status: 400 }
@@ -26,7 +46,7 @@ export async function POST(request: Request) {
     }
 
     // Validate credentials against Notion API
-    const isValid = await validateNotionConnection(notionApiKey, notionDatabaseId);
+    const isValid = await validateNotionConnection(finalApiKey, notionDatabaseId);
     if (!isValid) {
       return NextResponse.json(
         { error: 'Connection failed. Please check your Notion API Token, Database ID, and ensure the integration is shared with the database.' },
@@ -34,9 +54,17 @@ export async function POST(request: Request) {
       );
     }
 
-    saveConfig({ notionApiKey, notionDatabaseId });
+    saveConfig({
+      notionApiKey: finalApiKey,
+      notionDatabaseId,
+      discordWebhookUrl: discordWebhookUrl || '',
+      slackWebhookUrl: slackWebhookUrl || '',
+      lineChannelAccessToken: lineChannelAccessToken || '',
+      lineUserId: lineUserId || '',
+      notificationEnabled: !!notificationEnabled,
+    });
 
-    return NextResponse.json({ success: true, message: 'Notion configuration saved and verified successfully!' });
+    return NextResponse.json({ success: true, message: 'Configuration saved and verified successfully!' });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to save configuration' }, { status: 500 });
   }

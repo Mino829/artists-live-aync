@@ -149,6 +149,15 @@ export default function Dashboard() {
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [configFeedback, setConfigFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  // Notification Settings State
+  const [discordWebhookUrl, setDiscordWebhookUrl] = useState('');
+  const [slackWebhookUrl, setSlackWebhookUrl] = useState('');
+  const [lineChannelAccessToken, setLineChannelAccessToken] = useState('');
+  const [lineUserId, setLineUserId] = useState('');
+  const [notificationEnabled, setNotificationEnabled] = useState(false);
+  const [isTestingNotification, setIsTestingNotification] = useState(false);
+  const [notificationFeedback, setNotificationFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   // Artists State
   const [artists, setArtists] = useState<Artist[]>([]);
   const [isLoadingArtists, setIsLoadingArtists] = useState(true);
@@ -208,6 +217,11 @@ export default function Dashboard() {
       if (res.ok) {
         const data = await res.json();
         setIsNotionConfigured(data.configured);
+        setDiscordWebhookUrl(data.discordWebhookUrl || '');
+        setSlackWebhookUrl(data.slackWebhookUrl || '');
+        setLineChannelAccessToken(data.lineChannelAccessToken || '');
+        setLineUserId(data.lineUserId || '');
+        setNotificationEnabled(data.notificationEnabled || false);
         if (data.configured) {
           setNotionDatabaseId(data.notionDatabaseId);
           addLog(`Notion is connected to database: ${data.notionDatabaseId}`, 'success');
@@ -282,24 +296,65 @@ export default function Dashboard() {
       const res = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notionApiKey, notionDatabaseId: parsedDbId }),
+        body: JSON.stringify({
+          notionApiKey,
+          notionDatabaseId: parsedDbId,
+          discordWebhookUrl,
+          slackWebhookUrl,
+          lineChannelAccessToken,
+          lineUserId,
+          notificationEnabled,
+        }),
       });
 
       const data = await res.json();
       if (res.ok) {
         setIsNotionConfigured(true);
         setConfigFeedback({ type: 'success', message: data.message });
-        addLog('Notion credentials verified and saved successfully!', 'success');
+        addLog('Configuration saved and verified successfully!', 'success');
         setNotionApiKey(''); // Clear secret
       } else {
         setConfigFeedback({ type: 'error', message: data.error });
-        addLog(`Notion connection failed: ${data.error}`, 'error');
+        addLog(`Connection failed: ${data.error}`, 'error');
       }
     } catch (err) {
       setConfigFeedback({ type: 'error', message: 'Failed to communicate with configuration API.' });
-      addLog('Network error occurred during Notion configuration', 'error');
+      addLog('Network error occurred during configuration', 'error');
     } finally {
       setIsSavingConfig(false);
+    }
+  };
+
+  const handleSendTestNotification = async () => {
+    setIsTestingNotification(true);
+    setNotificationFeedback(null);
+    addLog('Sending test notification...', 'info');
+
+    try {
+      const res = await fetch('/api/config/test-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          discordWebhookUrl,
+          slackWebhookUrl,
+          lineChannelAccessToken,
+          lineUserId,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setNotificationFeedback({ type: 'success', message: 'Test notification sent successfully!' });
+        addLog('Test notification sent successfully!', 'success');
+      } else {
+        setNotificationFeedback({ type: 'error', message: data.error });
+        addLog(`Test notification failed: ${data.error}`, 'error');
+      }
+    } catch (err) {
+      setNotificationFeedback({ type: 'error', message: 'Failed to communicate with test notification API.' });
+      addLog('Network error occurred during test notification', 'error');
+    } finally {
+      setIsTestingNotification(false);
     }
   };
 
@@ -604,6 +659,109 @@ export default function Dashboard() {
                 )}
               </button>
             </form>
+          </div>
+
+          {/* Notification configuration card */}
+          <div className="glass-card">
+            <h2 className="card-title">Notification Integration</h2>
+            
+            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
+              <input
+                type="checkbox"
+                id="notification-enabled"
+                style={{ width: '1.2rem', height: '1.2rem', cursor: 'pointer' }}
+                checked={notificationEnabled}
+                onChange={(e) => setNotificationEnabled(e.target.checked)}
+              />
+              <label htmlFor="notification-enabled" style={{ fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}>
+                Enable Notifications on Scrape
+              </label>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Discord Webhook URL</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="https://discord.com/api/webhooks/..."
+                value={discordWebhookUrl}
+                onChange={(e) => setDiscordWebhookUrl(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Slack Webhook URL</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="https://hooks.slack.com/services/..."
+                value={slackWebhookUrl}
+                onChange={(e) => setSlackWebhookUrl(e.target.value)}
+              />
+            </div>
+
+            <div style={{ borderTop: '1px dashed var(--border-color)', margin: '1.25rem 0', paddingTop: '1rem' }}>
+              <h3 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', fontWeight: 700 }}>LINE Push Notification</h3>
+              
+              <div className="form-group">
+                <label className="form-label">LINE Channel Access Token</label>
+                <input
+                  type="password"
+                  className="form-input"
+                  placeholder="eyJhbGciOiJIUzI1Ni..."
+                  value={lineChannelAccessToken}
+                  onChange={(e) => setLineChannelAccessToken(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">LINE User ID</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="U1234567890abcdef..."
+                  value={lineUserId}
+                  onChange={(e) => setLineUserId(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {notificationFeedback && (
+              <div
+                style={{
+                  fontSize: '0.85rem',
+                  padding: '0.75rem',
+                  borderRadius: '6px',
+                  marginBottom: '1rem',
+                  background: notificationFeedback.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
+                  border: `1px solid ${notificationFeedback.type === 'success' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)'}`,
+                  color: notificationFeedback.type === 'success' ? 'var(--color-emerald)' : 'var(--color-rose)',
+                }}
+              >
+                {notificationFeedback.message}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                style={{ flex: 1 }}
+                onClick={handleSendTestNotification}
+                disabled={isTestingNotification || (!discordWebhookUrl && !slackWebhookUrl && !(lineChannelAccessToken && lineUserId))}
+              >
+                {isTestingNotification ? 'Sending...' : 'Test Send'}
+              </button>
+              <button 
+                type="button" 
+                className="btn" 
+                style={{ flex: 1 }}
+                onClick={handleSaveConfig}
+                disabled={isSavingConfig}
+              >
+                {isSavingConfig ? 'Saving...' : 'Save Settings'}
+              </button>
+            </div>
           </div>
 
           {/* Quick Stats / Control Panel */}

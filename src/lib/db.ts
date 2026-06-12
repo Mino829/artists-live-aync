@@ -7,6 +7,11 @@ const DB_FILE = path.join(DB_DIR, 'db.json');
 export interface NotionConfig {
   notionApiKey: string;
   notionDatabaseId: string;
+  discordWebhookUrl?: string;
+  slackWebhookUrl?: string;
+  lineChannelAccessToken?: string;
+  lineUserId?: string;
+  notificationEnabled?: boolean;
 }
 
 export interface Artist {
@@ -46,6 +51,11 @@ const DEFAULT_DB: DatabaseSchema = {
   config: {
     notionApiKey: '',
     notionDatabaseId: '',
+    discordWebhookUrl: '',
+    slackWebhookUrl: '',
+    lineChannelAccessToken: '',
+    lineUserId: '',
+    notificationEnabled: false,
   },
   artists: [
     {
