@@ -196,12 +196,15 @@ export default function Dashboard() {
 
     // Parse Database ID if a full URL was pasted
     let parsedDbId = notionDatabaseId.trim();
-    const urlMatch = parsedDbId.match(/notion\.so\/(?:[^/]+\/)?([a-f0-9]{32})/i);
+    const urlMatch = parsedDbId.match(/notion\.(?:so|com)\/(?:[^/]+\/)?(?:p\/)?([a-f0-9]{8}-?[a-f0-9]{4}-?[a-f0-9]{4}-?[a-f0-9]{4}-?[a-f0-9]{12})/i);
     if (urlMatch) {
       parsedDbId = urlMatch[1];
-      setNotionDatabaseId(parsedDbId); // Update input field value
-      addLog(`Extracted Notion Database ID: ${parsedDbId}`, 'info');
     }
+    
+    // Normalize: remove any hyphens from the ID
+    parsedDbId = parsedDbId.replace(/-/g, '');
+    setNotionDatabaseId(parsedDbId); // Update input field value
+    addLog(`Extracted Notion Database ID: ${parsedDbId}`, 'info');
 
     try {
       const res = await fetch('/api/config', {
