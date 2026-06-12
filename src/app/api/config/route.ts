@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getConfig, saveConfig } from '@/lib/db';
 import { validateNotionConnection } from '@/lib/notion';
+import { verifyAuth, unauthorizedResponse } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) {
+    return unauthorizedResponse();
+  }
   try {
     const config = getConfig();
     return NextResponse.json({
@@ -20,6 +24,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!verifyAuth(request)) {
+    return unauthorizedResponse();
+  }
   try {
     const {
       notionApiKey,

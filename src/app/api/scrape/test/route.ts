@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { scrapeLiveInfo } from '@/lib/scraper';
+import { verifyAuth, unauthorizedResponse } from '@/lib/auth';
 
 export async function POST(request: Request) {
+  if (!verifyAuth(request)) {
+    return unauthorizedResponse();
+  }
   try {
     const body = await request.json();
     const { liveUrl, selectorItem, selectorTitle, selectorDate, selectorVenue, selectorLink } = body;

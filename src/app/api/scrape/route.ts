@@ -12,8 +12,12 @@ import {
 import { scrapeLiveInfo, generateEventId } from '@/lib/scraper';
 import { syncEventToNotion } from '@/lib/notion';
 import { sendNotifications } from '@/lib/notification';
+import { verifyAuth, unauthorizedResponse } from '@/lib/auth';
 
 export async function POST(request: Request) {
+  if (!verifyAuth(request)) {
+    return unauthorizedResponse();
+  }
   try {
     const body = await request.json().catch(() => ({}));
     const { artistId } = body;

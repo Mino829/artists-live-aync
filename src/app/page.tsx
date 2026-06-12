@@ -170,6 +170,14 @@ export default function Dashboard() {
   const [showDiscordHelp, setShowDiscordHelp] = useState(false);
   const [showLineHelp, setShowLineHelp] = useState(false);
 
+  // Access Authentication State
+  const [accessPasswordInput, setAccessPasswordInput] = useState('');
+  const [accessPassword, setAccessPassword] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [loginError, setLoginError] = useState('');
+
   // Artists State
   const [artists, setArtists] = useState<Artist[]>([]);
   const [isLoadingArtists, setIsLoadingArtists] = useState(true);
@@ -199,12 +207,73 @@ export default function Dashboard() {
   // Global Scrape State
   const [isSyncingAll, setIsSyncingAll] = useState(false);
 
-  // Fetch all initial data
+  // Verify saved password on boot
   useEffect(() => {
-    fetchConfig();
-    fetchArtists();
-    addLog('System initialized. Ready for operations.', 'info');
+    const saved = localStorage.getItem('access_password');
+    if (saved) {
+      verifySavedPassword(saved);
+    } else {
+      setAuthChecking(false);
+      setIsLoadingArtists(false);
+    }
   }, []);
+
+  // Fetch initial data when authenticated
+  useEffect(() => {
+    if (isAuthenticated && accessPassword) {
+      fetchConfig();
+      fetchArtists();
+    }
+  }, [isAuthenticated, accessPassword]);
+
+  const verifySavedPassword = async (saved: string) => {
+    try {
+      const res = await fetch('/api/auth/check', {
+        headers: { 'x-api-key': saved }
+      });
+      if (res.ok) {
+        setAccessPassword(saved);
+        setIsAuthenticated(true);
+      } else {
+        localStorage.removeItem('access_password');
+      }
+    } catch (e) {
+      localStorage.removeItem('access_password');
+    } finally {
+      setAuthChecking(false);
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accessPasswordInput.trim()) return;
+
+    setIsVerifyingPassword(true);
+    setLoginError('');
+
+    try {
+      const res = await fetch('/api/auth/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: accessPasswordInput }),
+      });
+
+      if (res.ok) {
+        setAccessPassword(accessPasswordInput);
+        setIsAuthenticated(true);
+        localStorage.setItem('access_password', accessPasswordInput);
+        addLog('Successfully authenticated.', 'success');
+      } else {
+        const data = await res.json().catch(() => ({ error: 'Invalid password' }));
+        setLoginError(data.error || 'Invalid password');
+        addLog('Authentication attempt failed: Invalid password.', 'error');
+      }
+    } catch (err) {
+      setLoginError('Failed to contact server for authentication.');
+    } finally {
+      setIsVerifyingPassword(false);
+    }
+  };
 
   // Poll for events list when tab or artists update
   useEffect(() => {
@@ -225,7 +294,9 @@ export default function Dashboard() {
 
   const fetchConfig = async () => {
     try {
-      const res = await fetch('/api/config');
+      const res = await fetch('/api/config', {
+        headers: { 'x-api-key': accessPassword }
+      });
       if (res.ok) {
         const data = await res.json();
         setIsNotionConfigured(data.configured);
@@ -249,7 +320,9 @@ export default function Dashboard() {
   const fetchArtists = async () => {
     setIsLoadingArtists(true);
     try {
-      const res = await fetch('/api/artists');
+      const res = await fetch('/api/artists', {
+        headers: { 'x-api-key': accessPassword }
+      });
       if (res.ok) {
         const data = await res.json();
         setArtists(data);
@@ -264,7 +337,9 @@ export default function Dashboard() {
   const fetchEvents = async () => {
     try {
       // Get all artists to trigger event loads
-      const res = await fetch('/api/artists');
+      const res = await fetch('/api/artists', {
+        headers: { 'x-api-key': accessPassword }
+      });
       if (res.ok) {
         // We fetch events from a simple local endpoint. 
         // For standard setup we can fetch the database directly, or load from the JSON file since we read the db
@@ -275,7 +350,9 @@ export default function Dashboard() {
         // That is very clean. Let's see: we can fetch events by hitting an endpoint, or we can fetch them via artists.
         // Wait! Let's check how we can fetch events. We can write a route for `GET /api/events` next.
         // For now, let's fetch `/api/events` and I will write that small endpoint in a second.
-        const eventsRes = await fetch('/api/events');
+        const eventsRes = await fetch('/api/events', {
+          headers: { 'x-api-key': accessPassword }
+        });
         if (eventsRes.ok) {
           const data = await eventsRes.json();
           setEvents(data);
@@ -307,7 +384,10 @@ export default function Dashboard() {
     try {
       const res = await fetch('/api/config', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': accessPassword
+        },
         body: JSON.stringify({
           notionApiKey,
           notionDatabaseId: parsedDbId,
@@ -345,7 +425,10 @@ export default function Dashboard() {
     try {
       const res = await fetch('/api/config/test-notification', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': accessPassword
+        },
         body: JSON.stringify({
           discordWebhookUrl,
           slackWebhookUrl,
@@ -395,7 +478,10 @@ export default function Dashboard() {
     try {
       const res = await fetch('/api/scrape/test', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': accessPassword
+        },
         body: JSON.stringify({
           liveUrl: artistLiveUrlInput,
           selectorItem: selectorItemInput,
@@ -448,7 +534,10 @@ export default function Dashboard() {
     try {
       const res = await fetch('/api/artists', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': accessPassword
+        },
         body: JSON.stringify({
           id: editingArtistId,
           name: artistNameInput,
@@ -485,6 +574,7 @@ export default function Dashboard() {
     try {
       const res = await fetch(`/api/artists?id=${id}`, {
         method: 'DELETE',
+        headers: { 'x-api-key': accessPassword }
       });
 
       if (res.ok) {
@@ -542,7 +632,10 @@ export default function Dashboard() {
     try {
       const res = await fetch('/api/scrape', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': accessPassword
+        },
         body: JSON.stringify({ artistId: id }),
       });
 
@@ -580,6 +673,67 @@ export default function Dashboard() {
     const date = new Date(isoString);
     return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   };
+
+  if (authChecking) {
+    return (
+      <div className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <span className="spinner" style={{ fontSize: '2.5rem', display: 'inline-block', marginBottom: '1rem' }}>🌀</span>
+          <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Checking security credentials...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+        <div className="glass-card" style={{ maxWidth: '400px', width: '100%', padding: '2.5rem', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+          <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+            <span style={{ fontSize: '3rem' }}>🔒</span>
+            <h1 className="header-title" style={{ fontSize: '1.75rem', marginTop: '1rem', marginBottom: '0.5rem', textAlign: 'center' }}>Security Lock</h1>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>This dashboard is protected. Enter the access password to unlock.</div>
+          </div>
+
+          <form onSubmit={handleLogin}>
+            <div className="form-group">
+              <label className="form-label">Access Password</label>
+              <input
+                type="password"
+                className="form-input"
+                placeholder="Enter password"
+                value={accessPasswordInput}
+                onChange={(e) => setAccessPasswordInput(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+
+            {loginError && (
+              <div
+                style={{
+                  fontSize: '0.85rem',
+                  padding: '0.75rem',
+                  borderRadius: '6px',
+                  marginBottom: '1.25rem',
+                  background: 'rgba(244, 63, 94, 0.1)',
+                  border: '1px solid rgba(244, 63, 94, 0.3)',
+                  color: 'var(--color-rose)',
+                  textAlign: 'center',
+                }}
+              >
+                {loginError}
+              </div>
+            )}
+
+            <button type="submit" className="btn" style={{ width: '100%', height: '2.75rem' }} disabled={isVerifyingPassword}>
+              {isVerifyingPassword ? 'Unlocking...' : 'Unlock Dashboard'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">

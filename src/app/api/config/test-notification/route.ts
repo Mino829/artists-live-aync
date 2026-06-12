@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { sendTestNotification } from '@/lib/notification';
+import { verifyAuth, unauthorizedResponse } from '@/lib/auth';
 
 export async function POST(request: Request) {
+  if (!verifyAuth(request)) {
+    return unauthorizedResponse();
+  }
   try {
     const config = await request.json();
     

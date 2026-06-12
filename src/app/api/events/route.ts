@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getEvents } from '@/lib/db';
+import { verifyAuth, unauthorizedResponse } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) {
+    return unauthorizedResponse();
+  }
   try {
     const events = getEvents();
     
