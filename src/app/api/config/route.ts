@@ -38,27 +38,32 @@ export async function POST(request: Request) {
       notificationEnabled
     } = await request.json();
 
-    let finalApiKey = notionApiKey;
     const existingConfig = getConfig();
-
+    let finalApiKey = notionApiKey;
+    
+    // Fallback to existing API key if it's already configured and not provided in the request
     if (!finalApiKey && existingConfig.notionApiKey) {
       finalApiKey = existingConfig.notionApiKey;
     }
 
-    if (!finalApiKey || !notionDatabaseId) {
-      return NextResponse.json(
-        { error: 'Both Notion Integration Token and Database ID are required.' },
-        { status: 400 }
-      );
-    }
+    const hasNotion = !!(finalApiKey || notionDatabaseId);
 
-    // Validate credentials against Notion API
-    const isValid = await validateNotionConnection(finalApiKey, notionDatabaseId);
-    if (!isValid) {
-      return NextResponse.json(
-        { error: 'Connection failed. Please check your Notion API Token, Database ID, and ensure the integration is shared with the database.' },
-        { status: 400 }
-      );
+    if (hasNotion) {
+      if (!finalApiKey || !notionDatabaseId) {
+        return NextResponse.json(
+          { error: 'To enable Notion sync, both Notion Integration Token and Database ID are required.' },
+          { status: 400 }
+        );
+      }
+
+      // Validate credentials against Notion API
+      const isValid = await validateNotionConnection(finalApiKey, notionDatabaseId);
+      if (!isValid) {
+        return NextResponse.json(
+          { error: 'Connection failed. Please check your Notion API Token, Database ID, and ensure the integration is shared with the database.' },
+          { status: 400 }
+        );
+      }
     }
 
     saveConfig({

@@ -41,10 +41,25 @@ export interface LiveEvent {
   syncedAt: string | null;
 }
 
+export interface SyncLog {
+  id: string;
+  timestamp: string;
+  trigger: 'manual' | 'cron';
+  results: {
+    artistName: string;
+    status: 'success' | 'failed';
+    scrapedCount: number;
+    newCount: number;
+    syncedCount: number;
+    errorMessage: string | null;
+  }[];
+}
+
 export interface DatabaseSchema {
   config: NotionConfig;
   artists: Artist[];
   events: LiveEvent[];
+  syncLogs: SyncLog[];
 }
 
 const DEFAULT_DB: DatabaseSchema = {
@@ -177,4 +192,25 @@ export function updateEventSyncStatus(
     db.events[index].syncedAt = syncedAt;
     writeDb(db);
   }
+}
+
+export function getSyncLogs(): SyncLog[] {
+  const db = readDb();
+  return db.syncLogs || [];
+}
+
+export function addSyncLog(log: Omit<SyncLog, 'id' | 'timestamp'>): void {
+  const db = readDb();
+  if (!db.syncLogs) {
+    db.syncLogs = [];
+  }
+  const newLog: SyncLog = {
+    id: Math.random().toString(36).substring(2, 9),
+    timestamp: new Date().toISOString(),
+    trigger: log.trigger || 'manual',
+    results: log.results,
+  };
+  
+  db.syncLogs = [newLog, ...db.syncLogs].slice(0, 100);
+  writeDb(db);
 }

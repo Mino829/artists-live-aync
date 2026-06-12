@@ -178,6 +178,23 @@ export default function Dashboard() {
   const [authChecking, setAuthChecking] = useState(true);
   const [loginError, setLoginError] = useState('');
 
+  // Sync Log State
+  interface SyncLog {
+    id: string;
+    timestamp: string;
+    trigger: 'manual' | 'cron';
+    results: {
+      artistName: string;
+      status: 'success' | 'failed';
+      scrapedCount: number;
+      newCount: number;
+      syncedCount: number;
+      errorMessage: string | null;
+    }[];
+  }
+  const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
+  const [activeFeedTab, setActiveFeedTab] = useState<'events' | 'syncLogs'>('events');
+
   // Artists State
   const [artists, setArtists] = useState<Artist[]>([]);
   const [isLoadingArtists, setIsLoadingArtists] = useState(true);
@@ -223,6 +240,7 @@ export default function Dashboard() {
     if (isAuthenticated && accessPassword) {
       fetchConfig();
       fetchArtists();
+      fetchSyncLogs();
     }
   }, [isAuthenticated, accessPassword]);
 
@@ -360,6 +378,20 @@ export default function Dashboard() {
       }
     } catch (e) {
       // Quietly ignore or log
+    }
+  };
+
+  const fetchSyncLogs = async () => {
+    try {
+      const res = await fetch('/api/logs', {
+        headers: { 'x-api-key': accessPassword }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSyncLogs(data);
+      }
+    } catch (e) {
+      // Ignore
     }
   };
 
@@ -659,12 +691,12 @@ export default function Dashboard() {
       addLog('Network error occurred during scrape sync trigger', 'error');
     } finally {
       if (id) {
-        // fetch updated list
         fetchArtists();
       } else {
         setIsSyncingAll(false);
         fetchArtists();
       }
+      fetchSyncLogs();
     }
   };
 
@@ -788,14 +820,13 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="form-group">
-                <label className="form-label">Database ID (or Full URL)</label>
+                <label className="form-label">Database ID (or Full URL) <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>(Optional)</span></label>
                 <input
                   type="text"
                   className="form-input"
                   placeholder="Paste URL or 32-character ID"
                   value={notionDatabaseId}
                   onChange={(e) => setNotionDatabaseId(e.target.value)}
-                  required
                 />
               </div>
 
@@ -1075,85 +1106,227 @@ export default function Dashboard() {
           {/* TAB 1: EVENTS FEED */}
           {activeTab === 'feed' && (
             <div className="glass-card" style={{ flexGrow: 1 }}>
-              <h2 className="card-title">Aggregated Live Feeds</h2>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+                <h2 className="card-title" style={{ margin: 0 }}>Aggregated Live Feeds</h2>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    className={`preset-pill ${activeFeedTab === 'events' ? 'active' : ''}`}
+                    style={{ margin: 0 }}
+                    onClick={() => setActiveFeedTab('events')}
+                  >
+                    📺 Events Feed ({events.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`preset-pill ${activeFeedTab === 'syncLogs' ? 'active' : ''}`}
+                    style={{ margin: 0 }}
+                    onClick={() => {
+                      setActiveFeedTab('syncLogs');
+                      fetchSyncLogs();
+                    }}
+                  >
+                    📜 Sync History ({syncLogs.length})
+                  </button>
+                </div>
+              </div>
               
-              {events.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-secondary)' }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🎵</div>
-                  <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>No live events imported yet.</p>
-                  <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                    Configure your scraper settings and click "Scrape & Sync" to download latest live items.
-                  </p>
-                </div>
-              ) : (
-                <div className="table-container">
-                  <table className="events-table">
-                    <thead>
-                      <tr>
-                        <th>Artist</th>
-                        <th>Show Title</th>
-                        <th>Date</th>
-                        <th>Venue</th>
-                        <th>Sync Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {events.map((event) => (
-                        <tr key={event.id}>
-                          <td style={{ fontWeight: 700, color: 'var(--color-purple)', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
-                            {event.artistName}
-                          </td>
-                          <td>
-                            <a
-                              href={event.link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="event-title"
-                            >
-                              {event.title}
-                              <span style={{ fontSize: '0.75rem', opacity: 0.5 }}>↗</span>
-                            </a>
-                          </td>
-                          <td>
-                            <span className="event-date">{event.date}</span>
-                          </td>
-                          <td>
-                            <div className="event-venue" title={event.venue}>
-                              {event.venue}
-                            </div>
-                          </td>
-                          <td style={{ whiteSpace: 'nowrap' }}>
-                            {event.notionPageId ? (
-                              <span
-                                className="status-indicator"
-                                style={{
-                                  color: 'var(--color-emerald)',
-                                  background: 'rgba(16, 185, 129, 0.08)',
-                                  border: '1px solid rgba(16, 185, 129, 0.2)'
-                                }}
-                              >
-                                <span className="status-dot active"></span>
-                                Synced
-                              </span>
-                            ) : (
-                              <span
-                                className="status-indicator"
-                                style={{
-                                  color: 'var(--color-amber)',
-                                  background: 'rgba(245, 158, 11, 0.08)',
-                                  border: '1px solid rgba(245, 158, 11, 0.2)'
-                                }}
-                              >
-                                <span className="status-dot warning"></span>
-                                Local Only
-                              </span>
-                            )}
-                          </td>
+              {activeFeedTab === 'events' ? (
+                events.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-secondary)' }}>
+                    <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🎵</div>
+                    <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>No live events imported yet.</p>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                      Configure your scraper settings and click "Scrape & Sync" to download latest live items.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="table-container">
+                    <table className="events-table">
+                      <thead>
+                        <tr>
+                          <th>Artist</th>
+                          <th>Show Title</th>
+                          <th>Date</th>
+                          <th>Venue</th>
+                          <th>Sync Status</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {events.map((event) => (
+                          <tr key={event.id}>
+                            <td style={{ fontWeight: 700, color: 'var(--color-purple)', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                              {event.artistName}
+                            </td>
+                            <td>
+                              <a
+                                href={event.link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="event-title"
+                              >
+                                {event.title}
+                                <span style={{ fontSize: '0.75rem', opacity: 0.5 }}>↗</span>
+                              </a>
+                            </td>
+                            <td>
+                              <span className="event-date">{event.date}</span>
+                            </td>
+                            <td>
+                              <div className="event-venue" title={event.venue}>
+                                {event.venue}
+                              </div>
+                            </td>
+                            <td style={{ whiteSpace: 'nowrap' }}>
+                              {event.notionPageId ? (
+                                <span
+                                  className="status-indicator"
+                                  style={{
+                                    color: 'var(--color-emerald)',
+                                    background: 'rgba(16, 185, 129, 0.08)',
+                                    border: '1px solid rgba(16, 185, 129, 0.2)'
+                                  }}
+                                >
+                                  <span className="status-dot active"></span>
+                                  Synced
+                                </span>
+                              ) : (
+                                <span
+                                  className="status-indicator"
+                                  style={{
+                                    color: 'var(--color-amber)',
+                                    background: 'rgba(245, 158, 11, 0.08)',
+                                    border: '1px solid rgba(245, 158, 11, 0.2)'
+                                  }}
+                                >
+                                  <span className="status-dot warning"></span>
+                                  Local Only
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              ) : (
+                /* SYNC LOGS VIEW */
+                syncLogs.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-secondary)' }}>
+                    <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>📜</div>
+                    <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>No sync history logged yet.</p>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                      Run a scraper sync (manual or cron) to populate this list.
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '550px', overflowY: 'auto', paddingRight: '0.5rem' }}>
+                    {syncLogs.map((log) => {
+                      const totalNew = log.results.reduce((acc, curr) => acc + curr.newCount, 0);
+                      const totalScraped = log.results.reduce((acc, curr) => acc + curr.scrapedCount, 0);
+                      const hasFailures = log.results.some((r) => r.status === 'failed');
+
+                      return (
+                        <div
+                          key={log.id}
+                          style={{
+                            background: 'rgba(255,255,255,0.02)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '8px',
+                            padding: '1rem',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.75rem',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span style={{ fontSize: '1rem' }}>
+                                {log.trigger === 'cron' ? '⏰' : '👤'}
+                              </span>
+                              <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {log.trigger === 'cron' ? 'Cron Sync Job' : 'Manual Scrape Run'}
+                              </span>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                ({new Date(log.timestamp).toLocaleString()})
+                              </span>
+                            </div>
+                            <div>
+                              {hasFailures ? (
+                                <span
+                                  className="status-indicator"
+                                  style={{
+                                    color: 'var(--color-rose)',
+                                    background: 'rgba(244, 63, 94, 0.08)',
+                                    border: '1px solid rgba(244, 63, 94, 0.2)',
+                                    padding: '0.2rem 0.5rem',
+                                    fontSize: '0.75rem',
+                                  }}
+                                >
+                                  Partial Failures
+                                </span>
+                              ) : (
+                                <span
+                                  className="status-indicator"
+                                  style={{
+                                    color: 'var(--color-emerald)',
+                                    background: 'rgba(16, 185, 129, 0.08)',
+                                    border: '1px solid rgba(16, 185, 129, 0.2)',
+                                    padding: '0.2rem 0.5rem',
+                                    fontSize: '0.75rem',
+                                  }}
+                                >
+                                  All Succeeded
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.5rem' }}>
+                            <div>Total Scraped: <strong style={{ color: 'var(--text-primary)' }}>{totalScraped}</strong></div>
+                            <div>New Items: <strong style={{ color: 'var(--color-cyan)' }}>{totalNew}</strong></div>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {log.results.map((res, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  background: 'rgba(0, 0, 0, 0.15)',
+                                  borderRadius: '6px',
+                                  padding: '0.5rem 0.75rem',
+                                  border: '1px solid rgba(255, 255, 255, 0.02)',
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontWeight: 600, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                    {res.artistName}
+                                  </span>
+                                  <span style={{ fontSize: '0.75rem', color: res.status === 'success' ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
+                                    {res.status === 'success' ? '✓ success' : '✗ failed'}
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.25rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                  <div>scraped: <strong style={{ color: 'var(--text-secondary)' }}>{res.scrapedCount}</strong></div>
+                                  <div>new: <strong style={{ color: 'var(--color-cyan)' }}>{res.newCount}</strong></div>
+                                  <div>synced: <strong style={{ color: 'var(--color-purple)' }}>{res.syncedCount}</strong></div>
+                                </div>
+                                {res.errorMessage && (
+                                  <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', color: 'var(--color-rose)', background: 'rgba(244,63,94,0.05)', padding: '0.25rem 0.5rem', borderRadius: '4px' }}>
+                                    {res.errorMessage}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
               )}
             </div>
           )}
