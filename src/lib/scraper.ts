@@ -171,7 +171,9 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
     // Fail silently and fallback to HTML parsing
   }
 
-  const $ = cheerio.load(content);
+  // Auto-detect XML content to enable xmlMode for proper CDATA and tag parsing
+  const isXml = content.trim().startsWith('<?xml') || liveUrl.toLowerCase().endsWith('.xml');
+  const $ = cheerio.load(content, isXml ? { xmlMode: true } : undefined);
   const items = $(selectorItem);
 
   if (items.length === 0) {
@@ -188,16 +190,28 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
     // Helper to get text or attribute
     const getValue = (selector: string): string => {
       if (!selector) return '';
+      let val = '';
       if (selector.startsWith('@')) {
         const attrName = selector.slice(1);
-        return cleanText(el.attr(attrName) || '');
-      }
-      if (selector.includes('@')) {
+        val = el.attr(attrName) || '';
+      } else if (selector.includes('@')) {
         const [subSelector, attrName] = selector.split('@');
         const subEl = subSelector ? el.find(subSelector) : el;
-        return cleanText(subEl.attr(attrName) || '');
+        val = subEl.attr(attrName) || '';
+      } else {
+        val = el.find(selector).text();
       }
-      return cleanText(el.find(selector).text());
+
+      // If text contains HTML tags (e.g. CDATA containing tags), strip tags for clean text
+      if (val && /<[a-z/][^>]*>/i.test(val)) {
+        try {
+          val = cheerio.load(val).text();
+        } catch (e) {
+          // Fallback to original
+        }
+      }
+
+      return cleanText(val);
     };
 
     // Extract Title
@@ -219,41 +233,39 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
 
     // Extract Link
     let link = liveUrl;
+    let foundHref: string | undefined = undefined;
+
     if (selectorLink) {
       if (selectorLink.startsWith('@')) {
         const attrName = selectorLink.slice(1);
-        const href = el.attr(attrName);
-        if (href) {
-          try {
-            link = new URL(href, liveUrl).href;
-          } catch (e) {
-            link = href;
-          }
-        }
+        foundHref = el.attr(attrName);
       } else if (selectorLink.includes('@')) {
         const [subSelector, attrName] = selectorLink.split('@');
         const subEl = subSelector ? el.find(subSelector) : el;
-        const href = subEl.attr(attrName);
-        if (href) {
-          try {
-            link = new URL(href, liveUrl).href;
-          } catch (e) {
-            link = href;
-          }
-        }
+        foundHref = subEl.attr(attrName);
       } else {
         let linkElement: any = el.find(selectorLink);
         if (linkElement.length === 0 && el.is(selectorLink)) {
           linkElement = el; // Selected item itself is the link
         }
-        const href = linkElement.attr('href');
-        if (href) {
-          try {
-            link = new URL(href, liveUrl).href;
-          } catch (e) {
-            link = href;
-          }
-        }
+        foundHref = linkElement.attr('href');
+      }
+    }
+
+    // Fallback: Check if the raw HTML contains a link (helpful for CDATA with HTML tags)
+    if (!foundHref) {
+      const elementHtml = el.html() || '';
+      const hrefMatch = elementHtml.match(/href=["']([^"']+)["']/i);
+      if (hrefMatch) {
+        foundHref = hrefMatch[1];
+      }
+    }
+
+    if (foundHref) {
+      try {
+        link = new URL(foundHref, liveUrl).href;
+      } catch (e) {
+        link = foundHref;
       }
     } else if (el.is('a')) {
       const href = el.attr('href');
