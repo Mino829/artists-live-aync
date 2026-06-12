@@ -51,20 +51,46 @@ The application exposes Next.js Route Handlers to perform operations:
   * Syncs unsynced events to Notion and saves the resulting `notionPageId` locally.
 * **`POST /api/scrape/test`**:
   * Simulates a scrape without saving any data or touching Notion. Used to test CSS selector configurations.
+* **`GET /api/logs`**:
+  * Retrieves all past automated/manual sync logs.
+* **`POST /api/auth/check` / `GET /api/auth/check`**:
+  * Authenticates and verifies the access passcode saved in clients' browsers against the `ACCESS_PASSWORD` environmental variable.
 
 ---
 
-## 4. Frontend Dashboard (`src/app/page.tsx`)
+## 4. Notifications Dispatcher (`src/lib/notification.ts`)
+
+Parallel dispatch engine for live-event alerts:
+* **Discord Webhooks**: Delivers customized rich embed blocks with artist info, show title, date, venue, and a quick-link button.
+* **Slack Webhooks**: Uses the Slack Blocks kit to format a clean, readable layout.
+* **LINE Messaging API**: Delivers push alerts directly to the configured user using `fetch` post-calls.
+
+---
+
+## 5. Security & Passcode Authorization (`src/lib/auth.ts`)
+
+Protects the application from unauthorized access:
+* **API Protection**: Checks incoming HTTP requests for `x-api-key` headers, `Authorization: Bearer` headers, or `?key=...` query parameters matching `ACCESS_PASSWORD`.
+* **Client-side Gatekeeper**: Prompts users for a password on their first visit, saving it securely in `localStorage` and attaching it to every outbound request header.
+
+---
+
+## 6. Frontend Dashboard (`src/app/page.tsx`)
 
 A single-page dashboard designed with a sleek dark theme and layout:
 
 ### Main Sections
-1. **Notion Integration Settings:**
-   * Enter API credentials.
-   * Supports **Notion Database URL Auto-Extraction**: Automatically extracts the 32-character database ID even if a user pastes a full `notion.com` or `notion.so` URL with query parameters and hyphens.
+1. **Notion & Notifications Settings:**
+   * Configure API credentials and toggle integrations.
+   * Notion config is optional (allowing notifications-only sync configurations).
+   * Accordion guides explaining how to obtain Discord webhooks, Slack keys, and LINE tokens.
 2. **Scraper Dashboard (Tabs):**
-   * **Feed Tab**: Shows the timeline of scraped events, their scraping details, and sync status.
+   * **Feed Tab**:
+     * **Events Feed**: Shows the timeline of scraped events and sync status.
+     * **Sync History**: Displays execution outcomes, timestamps, triggers (cron vs manual), scraped counts, new event counts, synced counts, and error highlights.
    * **Artists Config Tab**: 
-     * Register presets (米津玄師, Official髭男dism) or configure custom selectors.
+     * Register presets (including XML Feed presets like Mr.Children) or configure custom selectors.
      * **Test Scraper Live**: Runs a sandbox test and renders the scraped JSON preview on-screen before registering.
      * **Console Output**: A real-time terminal emulator showing system operations, successes, and warning logs.
+3. **Orchestrator Panel:**
+   * Trigger global sync sweeps or monitor metrics in a unified control interface.

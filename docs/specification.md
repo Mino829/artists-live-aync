@@ -59,6 +59,24 @@ interface LiveEvent {
 }
 ```
 
+### SyncLog
+Represents the details of a single manual or cron sync run execution.
+```typescript
+interface SyncLog {
+  id: string;               // Unique random ID
+  timestamp: string;        // ISO timestamp of the run
+  trigger: 'manual' | 'cron'; // Triggering source
+  results: {
+    artistName: string;     // Target artist name
+    status: 'success' | 'failed'; // Sync outcome status
+    scrapedCount: number;   // Number of parsed events found
+    newCount: number;       // Number of new events detected
+    syncedCount: number;    // Number of events successfully synced to Notion
+    errorMessage: string | null; // Error details if failed
+  }[];
+}
+```
+
 ---
 
 ## 3. Local JSON Database Schema (`data/db.json`)
@@ -69,13 +87,21 @@ Data is persisted locally in `data/db.json`. The file has the following schema:
 {
   "config": {
     "notionApiKey": "string (Notion Integration Token)",
-    "notionDatabaseId": "string (32-character Database ID)"
+    "notionDatabaseId": "string (32-character Database ID)",
+    "discordWebhookUrl": "string (Optional Discord URL)",
+    "slackWebhookUrl": "string (Optional Slack URL)",
+    "lineChannelAccessToken": "string (Optional LINE Token)",
+    "lineUserId": "string (Optional LINE User ID)",
+    "notificationEnabled": "boolean (Whether to send updates)"
   },
   "artists": [
     // Array of Artist objects
   ],
   "events": [
     // Array of LiveEvent objects
+  ],
+  "syncLogs": [
+    // Array of SyncLog objects
   ]
 }
 ```
@@ -89,7 +115,7 @@ Data is persisted locally in `data/db.json`. The file has the following schema:
 The application automatically verifies and configures the properties in the target Notion database. 
 
 ### Auto-Configured Columns
-When syncing, if any of the following properties are missing from the Notion database, the app automatically updates the database schema using the Notion API:
+When syncing, if any of the following properties are missing from the Notion database, the app automatically updates the database schema using raw HTTP PATCH fetch calls to bypass Notion client validation limits:
 
 | Column Name | Notion Type | Description |
 | :--- | :--- | :--- |
