@@ -127,6 +127,15 @@ const PRESETS = [
     selectorLink: 'a',
   },
   {
+    name: 'Mr.Children (News - XML)',
+    liveUrl: 'https://www.mrchildren.jp/news/news.xml',
+    selectorItem: 'news',
+    selectorTitle: 'news_header',
+    selectorDate: '@date',
+    selectorVenue: 'news_content',
+    selectorLink: 'news_content a@href',
+  },
+  {
     name: 'Custom Artist (Manually Configure)',
     liveUrl: '',
     selectorItem: '',
@@ -157,6 +166,9 @@ export default function Dashboard() {
   const [notificationEnabled, setNotificationEnabled] = useState(false);
   const [isTestingNotification, setIsTestingNotification] = useState(false);
   const [notificationFeedback, setNotificationFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const [showDiscordHelp, setShowDiscordHelp] = useState(false);
+  const [showLineHelp, setShowLineHelp] = useState(false);
 
   // Artists State
   const [artists, setArtists] = useState<Artist[]>([]);
@@ -687,6 +699,47 @@ export default function Dashboard() {
                 value={discordWebhookUrl}
                 onChange={(e) => setDiscordWebhookUrl(e.target.value)}
               />
+              <button
+                type="button"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--color-cyan)',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  padding: '0.25rem 0',
+                  marginTop: '0.25rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  fontWeight: 600,
+                }}
+                onClick={() => setShowDiscordHelp(!showDiscordHelp)}
+              >
+                <span>{showDiscordHelp ? '▼' : '▶'}</span> Discord Webhookの取得手順を表示
+              </button>
+
+              {showDiscordHelp && (
+                <div
+                  style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid var(--border-color)',
+                    padding: '0.75rem',
+                    borderRadius: '6px',
+                    marginTop: '0.5rem',
+                    fontSize: '0.8rem',
+                    color: 'var(--text-secondary)',
+                    lineHeight: '1.4',
+                  }}
+                >
+                  <ol style={{ margin: 0, paddingLeft: '1.2rem' }}>
+                    <li style={{ marginBottom: '0.25rem' }}>Discordで通知を送りたいテキストチャンネルの横にある<strong>「チャンネルの編集（⚙️）」</strong>をクリックします。</li>
+                    <li style={{ marginBottom: '0.25rem' }}>左メニューから<strong>「連携サービス（Integrations）」</strong>を選択します。</li>
+                    <li style={{ marginBottom: '0.25rem' }}><strong>「ウェブフックを作成（Create Webhook）」</strong>をクリックします。</li>
+                    <li style={{ marginBottom: '0.25rem' }}>名前やチャンネルを確認し、<strong>「ウェブフックURLをコピー」</strong>ボタンを押して、ここに貼り付けます。</li>
+                  </ol>
+                </div>
+              )}
             </div>
 
             <div className="form-group">
@@ -723,6 +776,47 @@ export default function Dashboard() {
                   value={lineUserId}
                   onChange={(e) => setLineUserId(e.target.value)}
                 />
+                <button
+                  type="button"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--color-cyan)',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                    padding: '0.25rem 0',
+                    marginTop: '0.25rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    fontWeight: 600,
+                  }}
+                  onClick={() => setShowLineHelp(!showLineHelp)}
+                >
+                  <span>{showLineHelp ? '▼' : '▶'}</span> LINE通知キーの取得手順を表示
+                </button>
+
+                {showLineHelp && (
+                  <div
+                    style={{
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid var(--border-color)',
+                      padding: '0.75rem',
+                      borderRadius: '6px',
+                      marginTop: '0.5rem',
+                      fontSize: '0.8rem',
+                      color: 'var(--text-secondary)',
+                      lineHeight: '1.4',
+                    }}
+                  >
+                    <ol style={{ margin: 0, paddingLeft: '1.2rem' }}>
+                      <li style={{ marginBottom: '0.25rem' }}><a href="https://developers.line.me/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-cyan)', textDecoration: 'underline' }}>LINE Developers</a>にログインします。</li>
+                      <li style={{ marginBottom: '0.25rem' }}>プロバイダーと「Messaging API」チャネルを作成します。</li>
+                      <li style={{ marginBottom: '0.25rem' }}><strong>「Messaging API設定」</strong>タブ最下部にある「チャネルアクセストークン（長期）」を発行してコピーし、上に貼り付けます。</li>
+                      <li style={{ marginBottom: '0.25rem' }}><strong>「チャネル基本設定」</strong>タブの「あなたのユーザーID（Uで始まる英数字）」をコピーして、上に貼り付けます。</li>
+                    </ol>
+                  </div>
+                )}
               </div>
             </div>
 
