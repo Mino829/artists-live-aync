@@ -88,6 +88,7 @@ const DEFAULT_DB: DatabaseSchema = {
     }
   ],
   events: [],
+  syncLogs: [],
 };
 
 // Ensure database file and directory exist
@@ -104,7 +105,20 @@ export function readDb(): DatabaseSchema {
   ensureDb();
   try {
     const content = fs.readFileSync(DB_FILE, 'utf-8');
-    return JSON.parse(content) as DatabaseSchema;
+    const data = JSON.parse(content);
+    
+    // Ensure all required fields exist (migration helper)
+    if (!data.syncLogs) {
+      data.syncLogs = [];
+    }
+    if (!data.events) {
+      data.events = [];
+    }
+    if (!data.artists) {
+      data.artists = [];
+    }
+    
+    return data as DatabaseSchema;
   } catch (error) {
     console.error('Failed to read database file, reverting to default:', error);
     return DEFAULT_DB;
