@@ -56,10 +56,32 @@ export async function POST(request: Request) {
           selectorLink: artist.selectorLink,
         });
 
-        // Limit to the latest 5 items on the first successful sync
-        if (artist.lastSyncedAt === null) {
+        // Check existing events for this artist in the database
+        const currentDb = readDb();
+        const existingEventIds = new Set(
+          currentDb.events
+            .filter((e) => e.artistId === artist.id)
+            .map((e) => e.id)
+        );
+
+        if (existingEventIds.size === 0) {
+          // First sync: Limit to the latest 5 items
           console.log(`First sync for artist ${artist.name}. Limiting to the latest 5 items.`);
           scrapedItems = scrapedItems.slice(0, 5);
+        } else {
+          // Subsequent syncs: Only keep items that are newer than what we have in the DB.
+          // Since the items are ordered from newest to oldest, we find the first index that matches a stored event.
+          let matchIndex = scrapedItems.findIndex((item) => {
+            const eventId = generateEventId(artist.id, item.title, item.date);
+            return existingEventIds.has(eventId);
+          });
+
+          if (matchIndex !== -1) {
+            console.log(`Found existing event at index ${matchIndex} for ${artist.name}. Syncing ${matchIndex} new items.`);
+            scrapedItems = scrapedItems.slice(0, matchIndex);
+          } else {
+            console.log(`No matching existing events found on the page for ${artist.name}. Treating all ${scrapedItems.length} as new.`);
+          }
         }
 
         // 3. Map scraped items to database events
