@@ -214,19 +214,33 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
       return cleanText(val);
     };
 
-    // Extract Title
-    let title = getValue(selectorTitle);
-    if (!title && !selectorTitle) {
-      title = cleanText(el.text());
+    // Extract Date
+    let date = getValue(selectorDate);
+
+    // Extract Title (excluding nested Date element)
+    let title = '';
+    if (selectorTitle) {
+      if (selectorTitle.startsWith('@') || selectorTitle.includes('@')) {
+        title = getValue(selectorTitle);
+      } else {
+        const titleEl = el.find(selectorTitle).clone();
+        if (selectorDate && !selectorDate.startsWith('@') && !selectorDate.includes('@')) {
+          titleEl.find(selectorDate).remove();
+        }
+        title = cleanText(titleEl.text());
+      }
+    } else {
+      const cloneEl = el.clone();
+      if (selectorDate && !selectorDate.startsWith('@') && !selectorDate.includes('@')) {
+        cloneEl.find(selectorDate).remove();
+      }
+      title = cleanText(cloneEl.text());
     }
 
     // If title is empty, skip or use a placeholder
     if (!title) {
       return;
     }
-
-    // Extract Date
-    let date = getValue(selectorDate);
 
     // Extract Venue / description
     let venue = getValue(selectorVenue);
