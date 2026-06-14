@@ -46,15 +46,12 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
     throw new Error('Item selector is required');
   }
 
-  // Fetch HTML with browser headers to avoid WAF blocks (like Incapsula on official sites)
+  // Fetch HTML with User-Agent to avoid simple bot blocks
   const response = await fetch(liveUrl, {
     headers: {
       'User-Agent':
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
-      'Connection': 'keep-alive',
-      'Upgrade-Insecure-Requests': '1',
     },
   });
 
@@ -142,11 +139,7 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
         }
         
         let link = liveUrl;
-        if (liveUrl.includes('YOASOBI') || liveUrl.includes('yoasobi')) {
-          link = 'https://www.yoasobi-music.jp/news';
-        } else if (liveUrl.includes('breimen')) {
-          link = `https://www.brei.men/news/detail/?id=${item.id}`;
-        } else if (item.slug) {
+        if (item.slug) {
           // If the item has a slug, generate a slug URL
           link = `${liveUrl.replace(/\/$/, '')}?post=${item.slug}`;
         } else if (item.id) {
