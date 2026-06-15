@@ -1,0 +1,33 @@
+name: 20-Minute Cron Job
+
+on:
+  schedule:
+    # cron記法: 「分 時 日 月 曜日」
+    # 20分ごとに実行する設定
+    - cron: '*/20 * * * *'
+  # 手動でも実行（テスト）できるようにする記述
+  workflow_dispatch:
+
+jobs:
+  run-task:
+    # Linux環境（最も消費枠が少ない）を指定
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # 普段使っているバージョンに合わせてください
+
+      - name: Install dependencies
+        run: npm install
+
+      # ビルドが必要な構成の場合は以下のコメントアウトを外す
+      # - name: Build project
+      #   run: npm run build
+
+      - name: Run script
+        run: npm start # 実行コマンド（node dist/main.js など）
