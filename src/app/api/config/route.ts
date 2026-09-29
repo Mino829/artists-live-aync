@@ -76,7 +76,13 @@ export async function POST(request: Request) {
       notificationEnabled: !!notificationEnabled,
     });
 
-    return NextResponse.json({ success: true, message: 'Configuration saved and verified successfully!' });
+    return NextResponse.json({
+      success: true,
+      configured: !!(finalApiKey && notionDatabaseId),
+      message: finalApiKey && notionDatabaseId
+        ? 'Notion接続を確認し、設定を保存しました。'
+        : '設定を保存しました。Notion同期は未設定です。',
+    });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to save configuration' }, { status: 500 });
   }

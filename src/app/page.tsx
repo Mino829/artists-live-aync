@@ -214,6 +214,12 @@ export default function Dashboard() {
 
   const [showDiscordHelp, setShowDiscordHelp] = useState(false);
   const [showLineHelp, setShowLineHelp] = useState(false);
+  const [dashboardUrl, setDashboardUrl] = useState('');
+  const [isDashboardUrlCopied, setIsDashboardUrlCopied] = useState(false);
+  const [dashboardUrlCopyError, setDashboardUrlCopyError] = useState('');
+  const [healthCheckUrl, setHealthCheckUrl] = useState('/api/health');
+  const [isHealthUrlCopied, setIsHealthUrlCopied] = useState(false);
+  const [healthUrlCopyError, setHealthUrlCopyError] = useState('');
 
   // Access Authentication State
   const [accessPasswordInput, setAccessPasswordInput] = useState('');
@@ -288,6 +294,14 @@ export default function Dashboard() {
       fetchSyncLogs();
     }
   }, [isAuthenticated, accessPassword]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      const currentUrl = window.location.origin;
+      setDashboardUrl(currentUrl);
+      setHealthCheckUrl(`${currentUrl}/api/health`);
+    }
+  }, [isAuthenticated]);
 
   const verifySavedPassword = async (saved: string) => {
     try {
@@ -370,13 +384,13 @@ export default function Dashboard() {
         setNotificationEnabled(data.notificationEnabled || false);
         if (data.configured) {
           setNotionDatabaseId(data.notionDatabaseId);
-          addLog(`Notion is connected to database: ${data.notionDatabaseId}`, 'success');
+          addLog(`Notion同期先に接続しました: ${data.notionDatabaseId}`, 'success');
         } else {
-          addLog('Notion integration is not configured yet. Pushes will be saved locally only.', 'info');
+          addLog('Notionは未設定です。公演情報はアプリ内に保存されます。', 'info');
         }
       }
     } catch (e) {
-      addLog('Failed to fetch Notion configuration status', 'error');
+      addLog('Notionの設定状態を取得できませんでした。', 'error');
     }
   };
 
@@ -440,11 +454,20 @@ export default function Dashboard() {
     }
   };
 
-  const handleSaveConfig = async (e: React.FormEvent) => {
+  const handleSaveConfig = async (
+    e: React.SyntheticEvent,
+    feedbackTarget: 'notion' | 'notifications' = 'notion'
+  ) => {
     e.preventDefault();
     setIsSavingConfig(true);
-    setConfigFeedback(null);
-    addLog('Connecting and validating Notion credentials...', 'info');
+    const isNotionSetup = Boolean(notionApiKey.trim() || notionDatabaseId.trim());
+    const useNotionFeedback = feedbackTarget === 'notion';
+    if (useNotionFeedback) {
+      setConfigFeedback(null);
+    } else {
+      setNotificationFeedback(null);
+    }
+    addLog(isNotionSetup ? 'Notion接続を確認して設定を保存します...' : '通知設定を保存します...', 'info');
 
     // Parse Database ID if a full URL was pasted
     let parsedDbId = notionDatabaseId.trim();
@@ -456,7 +479,7 @@ export default function Dashboard() {
     // Normalize: remove any hyphens from the ID
     parsedDbId = parsedDbId.replace(/-/g, '');
     setNotionDatabaseId(parsedDbId); // Update input field value
-    addLog(`Extracted Notion Database ID: ${parsedDbId}`, 'info');
+    if (urlMatch) addLog('Notion URLからデータベースIDを読み取りました。', 'info');
 
     try {
       const res = await fetch('/api/config', {
@@ -478,26 +501,61 @@ export default function Dashboard() {
 
       const data = await res.json();
       if (res.ok) {
-        setIsNotionConfigured(true);
-        setConfigFeedback({ type: 'success', message: data.message });
-        addLog('Configuration saved and verified successfully!', 'success');
+        setIsNotionConfigured(Boolean(data.configured));
+        if (useNotionFeedback) {
+          setConfigFeedback({ type: 'success', message: data.message });
+        } else {
+          setNotificationFeedback({ type: 'success', message: '通知設定を保存しました。' });
+        }
+        addLog('設定を保存しました。', 'success');
         setNotionApiKey(''); // Clear secret
       } else {
-        setConfigFeedback({ type: 'error', message: data.error });
-        addLog(`Connection failed: ${data.error}`, 'error');
+        if (useNotionFeedback) {
+          setConfigFeedback({ type: 'error', message: data.error });
+        } else {
+          setNotificationFeedback({ type: 'error', message: data.error });
+        }
+        addLog(`設定を保存できませんでした: ${data.error}`, 'error');
       }
     } catch (err) {
-      setConfigFeedback({ type: 'error', message: 'Failed to communicate with configuration API.' });
-      addLog('Network error occurred during configuration', 'error');
+      const message = '設定APIに接続できませんでした。';
+      if (useNotionFeedback) {
+        setConfigFeedback({ type: 'error', message });
+      } else {
+        setNotificationFeedback({ type: 'error', message });
+      }
+      addLog('設定の保存中に通信エラーが発生しました。', 'error');
     } finally {
       setIsSavingConfig(false);
+    }
+  };
+
+  const handleCopyHealthUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(healthCheckUrl);
+      setHealthUrlCopyError('');
+      setIsHealthUrlCopied(true);
+      window.setTimeout(() => setIsHealthUrlCopied(false), 2000);
+    } catch {
+      setHealthUrlCopyError('URLをコピーできませんでした。URLを選択してコピーしてください。');
+    }
+  };
+
+  const handleCopyDashboardUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(dashboardUrl);
+      setDashboardUrlCopyError('');
+      setIsDashboardUrlCopied(true);
+      window.setTimeout(() => setIsDashboardUrlCopied(false), 2000);
+    } catch {
+      setDashboardUrlCopyError('URLをコピーできませんでした。URLを選択してコピーしてください。');
     }
   };
 
   const handleSendTestNotification = async () => {
     setIsTestingNotification(true);
     setNotificationFeedback(null);
-    addLog('Sending test notification...', 'info');
+    addLog('テスト通知を送信しています...', 'info');
 
     try {
       const res = await fetch('/api/config/test-notification', {
@@ -516,15 +574,15 @@ export default function Dashboard() {
 
       const data = await res.json();
       if (res.ok) {
-        setNotificationFeedback({ type: 'success', message: 'Test notification sent successfully!' });
-        addLog('Test notification sent successfully!', 'success');
+        setNotificationFeedback({ type: 'success', message: 'テスト通知を送信しました。' });
+        addLog('テスト通知を送信しました。', 'success');
       } else {
         setNotificationFeedback({ type: 'error', message: data.error });
-        addLog(`Test notification failed: ${data.error}`, 'error');
+        addLog(`テスト通知に失敗しました: ${data.error}`, 'error');
       }
     } catch (err) {
-      setNotificationFeedback({ type: 'error', message: 'Failed to communicate with test notification API.' });
-      addLog('Network error occurred during test notification', 'error');
+      setNotificationFeedback({ type: 'error', message: '通知テストAPIに接続できませんでした。' });
+      addLog('通知テスト中に通信エラーが発生しました。', 'error');
     } finally {
       setIsTestingNotification(false);
     }
@@ -816,26 +874,68 @@ export default function Dashboard() {
     <div className="app-container">
       {/* Header section */}
       <header>
-        <h1 className="header-title">Live Sync Aggregator</h1>
+        <h1 className="header-title">ライブ情報ダッシュボード</h1>
         <div className="header-subtitle">
-          <span>Monitor live concert postings and compile them automatically to Notion.</span>
+          <span>アーティストの公演情報を集めて、Notionや通知先へ同期します。</span>
           <span className="status-indicator">
-            <span className={`status-dot ${isNotionConfigured ? 'active' : 'inactive'}`}></span>
-            {isNotionConfigured ? 'Notion Connected' : 'Notion Offline'}
+            <span className={`status-dot ${isNotionConfigured ? 'active' : 'warning'}`}></span>
+            {isNotionConfigured ? 'Notion同期: 設定済み' : 'Notion同期: 未設定'}
           </span>
         </div>
       </header>
 
       {/* Main dashboard grid layout */}
       <div className="grid-dashboard">
-        {/* Left Side Column: Notion Connection and Artist Presets */}
+        {/* Left Side Column: Service settings and sync controls */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+          <section className="glass-card" aria-labelledby="uptime-title">
+            <h2 className="card-title" id="uptime-title">Uptime KumaのDiscord通知</h2>
+            <p className="helper-text">
+              すでに監視中のURLがある場合は、モニターを追加する必要はありません。
+              Uptime KumaでDiscord通知先を登録し、既存モニターに割り当ててください。
+            </p>
+            <div className="monitor-url-row">
+              <code>{dashboardUrl || 'アプリのURLを読み込み中...'}</code>
+              <button type="button" className="btn btn-secondary" onClick={handleCopyDashboardUrl} disabled={!dashboardUrl}>
+                {isDashboardUrlCopied ? 'コピー済み' : 'URLをコピー'}
+              </button>
+            </div>
+            {dashboardUrlCopyError && <p className="helper-error">{dashboardUrlCopyError}</p>}
+            <details className="setup-details">
+              <summary>既存モニターにDiscord通知を設定する</summary>
+              <ol>
+                <li><a href="https://github.com/louislam/uptime-kuma/wiki/Notification-Methods" target="_blank" rel="noopener noreferrer">通知設定</a>でDiscord通知先を追加し、テストして保存します。</li>
+                <li>すでに監視中のこのアプリのモニターを編集し、通知先に手順1のDiscord通知先を選びます。</li>
+                <li>モニターを保存します。Uptime Kumaでは通知設定をモニターに割り当てて使います。</li>
+              </ol>
+            </details>
+            <details className="setup-details optional-health-check">
+              <summary>専用の監視URLを使う場合（任意）</summary>
+              <div className="monitor-url-row">
+                <code>{healthCheckUrl}</code>
+                <button type="button" className="btn btn-secondary" onClick={handleCopyHealthUrl}>
+                  {isHealthUrlCopied ? 'コピー済み' : 'ヘルスチェックURLをコピー'}
+                </button>
+              </div>
+              {healthUrlCopyError && <p className="helper-error">{healthUrlCopyError}</p>}
+              <p>このURLはアプリがHTTP応答できるかだけを確認します。使う場合は、既存モニターのURL欄をこのURLに変更してください。</p>
+            </details>
+            <p className="helper-note">
+              Uptime Kumaも監視対象と同じサーバー上で動いている場合、そのサーバーの電源断やネットワーク断は通知できません。
+              その場合はUptime Kumaを別の端末またはホストで動かしてください。
+              チェック間隔を60秒程度にすると、停止を検知しやすくなります。
+            </p>
+          </section>
+
           {/* Notion configuration card */}
-          <div className="glass-card">
-            <h2 className="card-title">Notion Integration</h2>
-            <form onSubmit={handleSaveConfig}>
+          <section className="glass-card" aria-labelledby="notion-title">
+            <h2 className="card-title" id="notion-title">Notionへの保存（任意）</h2>
+            <p className="helper-text">
+              未設定でも公演情報はこのアプリ内に保存されます。Notionへ同期したい場合に設定してください。
+            </p>
+            <form onSubmit={(event) => handleSaveConfig(event, 'notion')}>
               <div className="form-group">
-                <label className="form-label">Notion Integration Token</label>
+                <label className="form-label">Notionインテグレーショントークン</label>
                 <div style={{ position: 'relative' }}>
                   <input
                     type={showApiKey ? 'text' : 'password'}
@@ -860,16 +960,16 @@ export default function Dashboard() {
                     }}
                     onClick={() => setShowApiKey(!showApiKey)}
                   >
-                    {showApiKey ? 'Hide' : 'Show'}
+                    {showApiKey ? '隠す' : '表示'}
                   </button>
                 </div>
               </div>
               <div className="form-group">
-                <label className="form-label">Database ID (or Full URL) <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>(Optional)</span></label>
+                <label className="form-label">データベースIDまたはNotion URL</label>
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="Paste URL or 32-character ID"
+                  placeholder="NotionのURLまたは32文字のID"
                   value={notionDatabaseId}
                   onChange={(e) => setNotionDatabaseId(e.target.value)}
                 />
@@ -894,18 +994,21 @@ export default function Dashboard() {
               <button type="submit" className="btn" style={{ width: '100%' }} disabled={isSavingConfig}>
                 {isSavingConfig ? (
                   <>
-                    <span className="spinner">⌛</span> Connecting...
+                    <span className="spinner">⌛</span> 保存中...
                   </>
                 ) : (
-                  'Connect & Save'
+                  notionApiKey.trim() || notionDatabaseId.trim() ? 'Notionを確認して保存' : '設定を保存'
                 )}
               </button>
             </form>
-          </div>
+          </section>
 
           {/* Notification configuration card */}
-          <div className="glass-card">
-            <h2 className="card-title">Notification Integration</h2>
+          <section className="glass-card" aria-labelledby="live-notification-title">
+            <h2 className="card-title" id="live-notification-title">新着公演の通知</h2>
+            <p className="helper-text">
+              スクレイピングで新しい公演が見つかったときの通知先です。サーバー停止の通知は上のUptime Kumaで設定します。
+            </p>
             
             <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
               <input
@@ -916,12 +1019,12 @@ export default function Dashboard() {
                 onChange={(e) => setNotificationEnabled(e.target.checked)}
               />
               <label htmlFor="notification-enabled" style={{ fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}>
-                Enable Notifications on Scrape
+                新しい公演が見つかったときに通知する
               </label>
             </div>
 
             <div className="form-group">
-              <label className="form-label">Discord Webhook URL</label>
+              <label className="form-label">Discord Webhook URL（新着公演用）</label>
               <input
                 type="text"
                 className="form-input"
@@ -946,7 +1049,7 @@ export default function Dashboard() {
                 }}
                 onClick={() => setShowDiscordHelp(!showDiscordHelp)}
               >
-                <span>{showDiscordHelp ? '▼' : '▶'}</span> Discord Webhookの取得手順を表示
+                <span>{showDiscordHelp ? '▼' : '▶'}</span> Discord Webhookの取得方法
               </button>
 
               {showDiscordHelp && (
@@ -973,7 +1076,7 @@ export default function Dashboard() {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Slack Webhook URL</label>
+              <label className="form-label">Slack Webhook URL（新着公演用）</label>
               <input
                 type="text"
                 className="form-input"
@@ -984,7 +1087,7 @@ export default function Dashboard() {
             </div>
 
             <div style={{ borderTop: '1px dashed var(--border-color)', margin: '1.25rem 0', paddingTop: '1rem' }}>
-              <h3 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', fontWeight: 700 }}>LINE Push Notification</h3>
+              <h3 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', fontWeight: 700 }}>LINE通知（新着公演用）</h3>
               
               <div className="form-group">
                 <label className="form-label">LINE Channel Access Token</label>
@@ -1074,23 +1177,23 @@ export default function Dashboard() {
                 onClick={handleSendTestNotification}
                 disabled={isTestingNotification || (!discordWebhookUrl && !slackWebhookUrl && !(lineChannelAccessToken && lineUserId))}
               >
-                {isTestingNotification ? 'Sending...' : 'Test Send'}
+                {isTestingNotification ? '送信中...' : '通知をテスト'}
               </button>
               <button 
                 type="button" 
                 className="btn" 
                 style={{ flex: 1 }}
-                onClick={handleSaveConfig}
+                onClick={(event) => handleSaveConfig(event, 'notifications')}
                 disabled={isSavingConfig}
               >
-                {isSavingConfig ? 'Saving...' : 'Save Settings'}
+                {isSavingConfig ? '保存中...' : '通知設定を保存'}
               </button>
             </div>
-          </div>
+          </section>
 
           {/* Quick Stats / Control Panel */}
           <div className="glass-card">
-            <h2 className="card-title">Orchestrator</h2>
+            <h2 className="card-title">公演情報の同期</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <button
                 className="btn"
@@ -1100,10 +1203,10 @@ export default function Dashboard() {
               >
                 {isSyncingAll ? (
                   <>
-                    <span className="spinner">🌀</span> Scraping All...
+                    <span className="spinner">🌀</span> 取得中...
                   </>
                 ) : (
-                  'Scrape & Sync All Artists'
+                  '登録アーティストを一括取得'
                 )}
               </button>
 
@@ -1116,11 +1219,11 @@ export default function Dashboard() {
                 }}
               >
                 <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Artists</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>登録アーティスト</div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 800, marginTop: '0.25rem', color: 'var(--color-purple)' }}>{artists.length}</div>
                 </div>
                 <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Synced Events</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Notion同期済み</div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 800, marginTop: '0.25rem', color: 'var(--color-cyan)' }}>
                     {events.filter((e) => e.notionPageId).length} <span style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-muted)' }}>/ {events.length}</span>
                   </div>
@@ -1133,18 +1236,22 @@ export default function Dashboard() {
         {/* Right Side Column: Content Panels */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           {/* Tabs header */}
-          <div className="tabs-container">
+          <div className="tabs-container" role="tablist" aria-label="ダッシュボード">
             <button
+              role="tab"
+              aria-selected={activeTab === 'feed'}
               className={`tab-btn ${activeTab === 'feed' ? 'active' : ''}`}
               onClick={() => setActiveTab('feed')}
             >
-              Live Event Feed
+              公演一覧
             </button>
             <button
+              role="tab"
+              aria-selected={activeTab === 'artists'}
               className={`tab-btn ${activeTab === 'artists' ? 'active' : ''}`}
               onClick={() => setActiveTab('artists')}
             >
-              Artist Configurations ({artists.length})
+              アーティスト設定 ({artists.length})
             </button>
           </div>
 
@@ -1152,7 +1259,7 @@ export default function Dashboard() {
           {activeTab === 'feed' && (
             <div className="glass-card" style={{ flexGrow: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
-                <h2 className="card-title" style={{ margin: 0 }}>Aggregated Live Feeds</h2>
+                <h2 className="card-title" style={{ margin: 0 }}>取得した公演情報</h2>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button
                     type="button"
@@ -1160,7 +1267,7 @@ export default function Dashboard() {
                     style={{ margin: 0 }}
                     onClick={() => setActiveFeedTab('events')}
                   >
-                    📺 Events Feed ({events.length})
+                    📺 公演一覧 ({events.length})
                   </button>
                   <button
                     type="button"
@@ -1171,7 +1278,7 @@ export default function Dashboard() {
                       fetchSyncLogs();
                     }}
                   >
-                    📜 Sync History ({syncLogs.length})
+                    📜 実行履歴 ({syncLogs.length})
                   </button>
                 </div>
               </div>
@@ -1180,9 +1287,9 @@ export default function Dashboard() {
                 events.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-secondary)' }}>
                     <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🎵</div>
-                    <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>No live events imported yet.</p>
+                    <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>公演情報はまだありません。</p>
                     <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                      Configure your scraper settings and click "Scrape & Sync" to download latest live items.
+                      「アーティスト設定」で登録してから「登録アーティストを一括取得」を実行してください。
                     </p>
                   </div>
                 ) : (
@@ -1190,11 +1297,11 @@ export default function Dashboard() {
                     <table className="events-table">
                       <thead>
                         <tr>
-                          <th>Artist</th>
-                          <th>Show Title</th>
-                          <th>Date</th>
-                          <th>Venue</th>
-                          <th>Sync Status</th>
+                          <th>アーティスト</th>
+                          <th>公演名</th>
+                          <th>日程</th>
+                          <th>会場</th>
+                          <th>Notion同期</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1233,7 +1340,7 @@ export default function Dashboard() {
                                   }}
                                 >
                                   <span className="status-dot active"></span>
-                                  Synced
+                                  Notion同期済み
                                 </span>
                               ) : (
                                 <span
@@ -1245,7 +1352,7 @@ export default function Dashboard() {
                                   }}
                                 >
                                   <span className="status-dot warning"></span>
-                                  Local Only
+                                  アプリ内に保存
                                 </span>
                               )}
                             </td>
@@ -1260,9 +1367,9 @@ export default function Dashboard() {
                 syncLogs.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-secondary)' }}>
                     <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>📜</div>
-                    <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>No sync history logged yet.</p>
+                    <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>実行履歴はまだありません。</p>
                     <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                      Run a scraper sync (manual or cron) to populate this list.
+                      手動取得または定期実行の結果がここに表示されます。
                     </p>
                   </div>
                 ) : (
@@ -1291,7 +1398,7 @@ export default function Dashboard() {
                                 {log.trigger === 'cron' ? '⏰' : '👤'}
                               </span>
                               <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                                {log.trigger === 'cron' ? 'Cron Sync Job' : 'Manual Scrape Run'}
+                                {log.trigger === 'cron' ? '定期実行' : '手動実行'}
                               </span>
                               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                 ({new Date(log.timestamp).toLocaleString()})
@@ -1309,7 +1416,7 @@ export default function Dashboard() {
                                     fontSize: '0.75rem',
                                   }}
                                 >
-                                  Partial Failures
+                                  一部失敗
                                 </span>
                               ) : (
                                 <span
@@ -1322,15 +1429,15 @@ export default function Dashboard() {
                                     fontSize: '0.75rem',
                                   }}
                                 >
-                                  All Succeeded
+                                  すべて成功
                                 </span>
                               )}
                             </div>
                           </div>
 
                           <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.5rem' }}>
-                            <div>Total Scraped: <strong style={{ color: 'var(--text-primary)' }}>{totalScraped}</strong></div>
-                            <div>New Items: <strong style={{ color: 'var(--color-cyan)' }}>{totalNew}</strong></div>
+                            <div>取得件数: <strong style={{ color: 'var(--text-primary)' }}>{totalScraped}</strong></div>
+                            <div>新着件数: <strong style={{ color: 'var(--color-cyan)' }}>{totalNew}</strong></div>
                           </div>
 
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -1351,13 +1458,13 @@ export default function Dashboard() {
                                     {res.artistName}
                                   </span>
                                   <span style={{ fontSize: '0.75rem', color: res.status === 'success' ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
-                                    {res.status === 'success' ? '✓ success' : '✗ failed'}
+                                    {res.status === 'success' ? '✓ 成功' : '✗ 失敗'}
                                   </span>
                                 </div>
                                 <div style={{ display: 'flex', gap: '1rem', marginTop: '0.25rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                  <div>scraped: <strong style={{ color: 'var(--text-secondary)' }}>{res.scrapedCount}</strong></div>
-                                  <div>new: <strong style={{ color: 'var(--color-cyan)' }}>{res.newCount}</strong></div>
-                                  <div>synced: <strong style={{ color: 'var(--color-purple)' }}>{res.syncedCount}</strong></div>
+                                  <div>取得: <strong style={{ color: 'var(--text-secondary)' }}>{res.scrapedCount}</strong></div>
+                                  <div>新着: <strong style={{ color: 'var(--color-cyan)' }}>{res.newCount}</strong></div>
+                                  <div>同期: <strong style={{ color: 'var(--color-purple)' }}>{res.syncedCount}</strong></div>
                                 </div>
                                 {res.errorMessage && (
                                   <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', color: 'var(--color-rose)', background: 'rgba(244,63,94,0.05)', padding: '0.25rem 0.5rem', borderRadius: '4px' }}>
@@ -1382,10 +1489,10 @@ export default function Dashboard() {
               {/* Form to Add / Edit Artist Configuration */}
               <div className="glass-card">
                 <h2 className="card-title">
-                  {editingArtistId ? `Edit Config: ${artistNameInput}` : 'Register New Artist Scraper'}
+                  {editingArtistId ? `${artistNameInput}の設定を編集` : 'アーティストの取得設定を追加'}
                   {editingArtistId && (
                     <button className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }} onClick={resetArtistForm}>
-                      Cancel Edit
+                      編集をキャンセル
                     </button>
                   )}
                 </h2>
@@ -1393,25 +1500,26 @@ export default function Dashboard() {
                 {/* Presets selecting header */}
                 {!editingArtistId && (
                   <div>
-                    <span className="form-label" style={{ marginBottom: '0.35rem' }}>Select Preset Configuration</span>
+                    <span className="form-label" style={{ marginBottom: '0.35rem' }}>プリセットから選ぶ（選択後に取得テストできます）</span>
                     <div className="presets-container">
                       {PRESETS.map((preset, index) => (
-                        <div
+                        <button
+                          type="button"
                           key={index}
                           className="preset-pill"
                           onClick={() => handleApplyPreset(preset)}
                         >
                           {preset.name}
-                        </div>
+                        </button>
                       ))}
                     </div>
                   </div>
                 )}
 
                 <form onSubmit={handleSaveArtist}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div className="responsive-form-grid two-columns">
                     <div className="form-group">
-                      <label className="form-label">Artist Display Name</label>
+                      <label className="form-label">アーティスト名</label>
                       <input
                         type="text"
                         className="form-input"
@@ -1422,7 +1530,7 @@ export default function Dashboard() {
                       />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Official Live URL</label>
+                      <label className="form-label">公式サイトの公演・ニュースURL</label>
                       <input
                         type="url"
                         className="form-input"
@@ -1435,13 +1543,14 @@ export default function Dashboard() {
                   </div>
 
                   <h3 style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', borderBottom: '1px dashed var(--border-color)', paddingBottom: '0.5rem', margin: '1.5rem 0 1rem 0' }}>
-                    CSS Selector Configuration (Cheerio / HTML parsing)
+                    取得項目の指定（CSSセレクター）
                   </h3>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <p className="helper-text">一覧の各項目から、公演名・日程・会場・リンクを見つけるための指定です。プリセットを使う場合は自動で入力されます。</p>
+                  <div className="responsive-form-grid two-columns">
                     <div className="form-group">
                       <label className="form-label">
-                        Container Selector <span style={{ color: 'var(--color-rose)' }}>*</span>
+                        公演一覧の繰り返し要素（必須） <span style={{ color: 'var(--color-rose)' }}>*</span>
                       </label>
                       <input
                         type="text"
@@ -1453,7 +1562,7 @@ export default function Dashboard() {
                       />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Title Selector</label>
+                      <label className="form-label">公演名のセレクター</label>
                       <input
                         type="text"
                         className="form-input"
@@ -1464,9 +1573,9 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                  <div className="responsive-form-grid three-columns">
                     <div className="form-group">
-                      <label className="form-label">Date Selector</label>
+                      <label className="form-label">日程のセレクター</label>
                       <input
                         type="text"
                         className="form-input"
@@ -1476,7 +1585,7 @@ export default function Dashboard() {
                       />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Venue Selector</label>
+                      <label className="form-label">会場のセレクター</label>
                       <input
                         type="text"
                         className="form-input"
@@ -1486,7 +1595,7 @@ export default function Dashboard() {
                       />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Link Selector</label>
+                      <label className="form-label">詳細リンクのセレクター</label>
                       <input
                         type="text"
                         className="form-input"
@@ -1502,7 +1611,7 @@ export default function Dashboard() {
                     <div className="test-preview-container">
                       <h4 style={{ margin: '0 0 1rem 0', display: 'flex', justifyContent: 'space-between', color: testResults.success ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
                         <span>
-                          {testResults.success ? `✅ Scraper Test Success! (Scraped ${testResults.count} items)` : '❌ Scraper Test Failed'}
+                          {testResults.success ? `✅ 取得テスト成功（${testResults.count}件）` : '❌ 取得テストに失敗しました'}
                         </span>
                       </h4>
 
@@ -1511,21 +1620,21 @@ export default function Dashboard() {
                           {testResults.items.map((item, idx) => (
                             <div key={idx} className="preview-item">
                               <div>
-                                <span className="preview-label">[{idx + 1}] Title:</span>
+                                <span className="preview-label">[{idx + 1}] 公演名:</span>
                                 <span style={{ fontWeight: 600 }}>{item.title}</span>
                               </div>
                               <div style={{ marginTop: '0.25rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', opacity: 0.85 }}>
                                 <div>
-                                  <span className="preview-label">Date:</span>
+                                  <span className="preview-label">日程:</span>
                                   {item.date || 'N/A'}
                                 </div>
                                 <div>
-                                  <span className="preview-label">Venue:</span>
+                                  <span className="preview-label">会場:</span>
                                   {item.venue || 'N/A'}
                                 </div>
                               </div>
                               <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', color: 'var(--color-cyan)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                <span className="preview-label" style={{ color: 'var(--text-muted)' }}>Link:</span>
+                                <span className="preview-label" style={{ color: 'var(--text-muted)' }}>リンク:</span>
                                 {item.link}
                               </div>
                             </div>
@@ -1542,9 +1651,9 @@ export default function Dashboard() {
                             fontSize: '0.875rem',
                           }}
                         >
-                          <strong>Error Details:</strong> {testResults.error}
+                          <strong>エラー:</strong> {testResults.error}
                           <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                            Possible issues: URL returns Javascript-rendered payload (SPA), or selectors are incorrect. Verify selectors by inspecting target element's HTML structures.
+                            URLがJavaScriptで描画されるページか、セレクターが合っていない可能性があります。公式サイトのHTMLを確認してください。
                           </p>
                         </div>
                       )}
@@ -1553,7 +1662,7 @@ export default function Dashboard() {
 
                   <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.25rem' }}>
                     <button type="submit" className="btn" disabled={isSavingArtist}>
-                      {isSavingArtist ? 'Saving...' : editingArtistId ? 'Save Configuration' : 'Register Scraper'}
+                      {isSavingArtist ? '保存中...' : editingArtistId ? '変更を保存' : 'アーティストを登録'}
                     </button>
                     <button
                       type="button"
@@ -1563,10 +1672,10 @@ export default function Dashboard() {
                     >
                       {isTestingScraper ? (
                         <>
-                          <span className="spinner">⏳</span> Fetching Page...
+                          <span className="spinner">⏳</span> ページを取得中...
                         </>
                       ) : (
-                        'Test Scraper Live'
+                        '取得テスト'
                       )}
                     </button>
                   </div>
@@ -1575,12 +1684,12 @@ export default function Dashboard() {
 
               {/* List of Registered Artists */}
               <div className="glass-card">
-                <h2 className="card-title">Registered Artists Scrapers</h2>
+                <h2 className="card-title">登録済みアーティスト</h2>
                 {isLoadingArtists ? (
-                  <div style={{ textAlign: 'center', padding: '2rem' }}>Loading configurations...</div>
+                  <div style={{ textAlign: 'center', padding: '2rem' }}>設定を読み込み中...</div>
                 ) : artists.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
-                    No artists registered yet. Create one using the form above.
+                    まだ登録がありません。上のフォームから追加してください。
                   </div>
                 ) : (
                   <div className="artist-list">
@@ -1600,10 +1709,10 @@ export default function Dashboard() {
                           </div>
                           <div style={{ display: 'flex', gap: '0.5rem' }}>
                             <button className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }} onClick={() => handleEditArtist(artist)}>
-                              Edit
+                              編集
                             </button>
                             <button className="btn btn-danger" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }} onClick={() => handleDeleteArtist(artist.id, artist.name)}>
-                              Delete
+                              削除
                             </button>
                           </div>
                         </div>
@@ -1619,7 +1728,7 @@ export default function Dashboard() {
 
                         <div className="artist-meta">
                           <div>
-                            Last Synced: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{formatDate(artist.lastSyncedAt)}</span>
+                            最終取得: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{formatDate(artist.lastSyncedAt)}</span>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                             <span className={`badge ${artist.status}`}>{artist.status}</span>
@@ -1629,14 +1738,14 @@ export default function Dashboard() {
                               onClick={() => triggerSync(artist.id)}
                               disabled={artist.status === 'syncing' || isSyncingAll}
                             >
-                              {artist.status === 'syncing' ? 'Syncing...' : 'Sync'}
+                              {artist.status === 'syncing' ? '取得中...' : '今すぐ取得'}
                             </button>
                           </div>
                         </div>
 
                         {artist.errorMessage && (
                           <div style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: 'var(--color-rose)', background: 'rgba(244,63,94,0.05)', padding: '0.5rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(244,63,94,0.1)' }}>
-                            <strong>Last Error:</strong> {artist.errorMessage}
+                            <strong>前回のエラー:</strong> {artist.errorMessage}
                           </div>
                         )}
                       </div>
@@ -1650,18 +1759,18 @@ export default function Dashboard() {
           {/* Scrolling Terminal for Console Logs */}
           <div className="glass-card">
             <h2 className="card-title" style={{ marginBottom: '0.75rem' }}>
-              <span>Developer Live Console</span>
+              <span>処理ログ</span>
               <button
                 className="btn btn-secondary"
                 style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', height: 'auto' }}
                 onClick={() => setLogs([])}
               >
-                Clear Console
+                ログを消去
               </button>
             </h2>
             <div className="terminal-console">
               {logs.length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Terminal idle. Waiting for events...</div>
+                <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>ログはまだありません。</div>
               ) : (
                 logs.map((log, index) => (
                   <div key={index} className={`terminal-line ${log.type}`}>

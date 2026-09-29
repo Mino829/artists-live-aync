@@ -53,6 +53,8 @@ The application exposes Next.js Route Handlers to perform operations:
   * Simulates a scrape without saving any data or touching Notion. Used to test CSS selector configurations.
 * **`GET /api/logs`**:
   * Retrieves all past automated/manual sync logs.
+* **`GET /api/health`**:
+  * Public liveness endpoint for external uptime monitors; returns HTTP 200 without exposing app configuration.
 * **`POST /api/auth/check` / `GET /api/auth/check`**:
   * Authenticates and verifies the access passcode saved in clients' browsers against the `ACCESS_PASSWORD` environmental variable.
 
@@ -64,10 +66,17 @@ Parallel dispatch engine for live-event alerts:
 * **Discord Webhooks**: Delivers customized rich embed blocks with artist info, show title, date, venue, and a quick-link button.
 * **Slack Webhooks**: Uses the Slack Blocks kit to format a clean, readable layout.
 * **LINE Messaging API**: Delivers push alerts directly to the configured user using `fetch` post-calls.
+* Test sends check provider HTTP responses and report rejected webhooks as failures.
 
 ---
 
-## 5. Security & Passcode Authorization (`src/lib/auth.ts`)
+## 5. Uptime Monitor Health Endpoint (`src/app/api/health/route.ts`)
+
+* `GET /api/health` returns HTTP 200 and a small `{ "status": "ok" }` response without authentication so an external monitor can check app availability.
+* It is a liveness check only; it does not inspect database integrity or scraper success.
+* Configure the monitor and its Discord notification in Uptime Kuma. Run Uptime Kuma on a separate reachable host if it must notify when the app server itself is down.
+
+## 6. Security & Passcode Authorization (`src/lib/auth.ts`)
 
 Protects the application from unauthorized access:
 * **API Protection**: Checks incoming HTTP requests for `x-api-key` headers, `Authorization: Bearer` headers, or `?key=...` query parameters matching `ACCESS_PASSWORD`.
@@ -75,13 +84,15 @@ Protects the application from unauthorized access:
 
 ---
 
-## 6. Frontend Dashboard (`src/app/page.tsx`)
+## 7. Frontend Dashboard (`src/app/page.tsx`)
 
 A single-page dashboard designed with a sleek dark theme and layout:
 
 ### Main Sections
-1. **Notion & Notifications Settings:**
-   * Configure API credentials and toggle integrations.
+1. **Integrations and Monitoring Settings:**
+   * Configure optional Notion sync and new-event notifications separately from server uptime monitoring.
+   * Copy the current app URL and assign a Discord notification target to an existing Uptime Kuma monitor.
+   * An optional dedicated `/api/health` URL is available when creating or updating a monitor.
    * Notion config is optional (allowing notifications-only sync configurations).
    * Accordion guides explaining how to obtain Discord webhooks, Slack keys, and LINE tokens.
 2. **Scraper Dashboard (Tabs):**
@@ -92,5 +103,5 @@ A single-page dashboard designed with a sleek dark theme and layout:
      * Register presets (including XML Feed presets like Mr.Children) or configure custom selectors.
      * **Test Scraper Live**: Runs a sandbox test and renders the scraped JSON preview on-screen before registering.
      * **Console Output**: A real-time terminal emulator showing system operations, successes, and warning logs.
-3. **Orchestrator Panel:**
+3. **Sync Controls:**
    * Trigger global sync sweeps or monitor metrics in a unified control interface.
