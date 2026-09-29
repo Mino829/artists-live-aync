@@ -736,7 +736,7 @@ export default function Dashboard() {
 
   const handleSaveArtist = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!artistNameInput.trim() || !artistLiveUrlInput.trim() || (!selectorItemInput.trim() && parserTypeInput !== 'jsonld-event')) {
+    if (!artistNameInput.trim() || !artistLiveUrlInput.trim()) {
       return;
     }
     if (!editingArtistId && !discoveryResult) {
@@ -1702,10 +1702,10 @@ export default function Dashboard() {
                   {showAdvancedSelectors && (
                     <div style={{ marginTop: '1rem', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
                       <h3 style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem' }}>取得項目の詳細設定</h3>
-                      <p className="helper-text">解析候補が違う場合だけ変更してください。プリセットを使う場合は入力済みです。</p>
+                      <p className="helper-text">通常は入力不要です。候補が違う場合や自動解析できない場合だけ変更してください。</p>
                       <div className="responsive-form-grid two-columns">
                         <div className="form-group">
-                          <label className="form-label">公演一覧の繰り返し要素</label>
+                          <label className="form-label">Container Selector（自動設定・必要時のみ）</label>
                           <input type="text" className="form-input" placeholder="例: li.live-item" value={selectorItemInput} onChange={(e) => { setSelectorItemInput(e.target.value); setDiscoveryResult(null); }} />
                         </div>
                         <div className="form-group">

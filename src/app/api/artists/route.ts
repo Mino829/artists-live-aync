@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getArtists, saveArtist, deleteArtist } from '@/lib/db';
 import { verifyAuth, unauthorizedResponse } from '@/lib/auth';
 import { runSync } from '@/lib/sync';
+import { discoverArtistSource } from '@/lib/discovery';
 
 export async function GET(request: Request) {
   if (!verifyAuth(request)) {
@@ -26,10 +27,41 @@ export async function POST(request: Request) {
       ? body.parserType
       : undefined;
 
-    if (!name || !liveUrl || (!selectorItem && parserType !== 'jsonld-event')) {
+    if (!name || !liveUrl) {
       return NextResponse.json(
-        { error: 'Name and Live URL are required. HTML sources also need an item selector.' },
+        { error: 'Name and Live URL are required.' },
         { status: 400 }
+      );
+    }
+
+    let resolvedParserType = parserType;
+    let resolvedSelectors = {
+      selectorItem: (selectorItem || '').trim(),
+      selectorTitle: (selectorTitle || '').trim(),
+      selectorDate: (selectorDate || '').trim(),
+      selectorVenue: (selectorVenue || '').trim(),
+      selectorLink: (selectorLink || '').trim(),
+    };
+
+    // The selector is an internal HTML parsing detail. If the UI did not provide
+    // one, discover a source config from the URL before saving the artist.
+    if (!resolvedSelectors.selectorItem && resolvedParserType !== 'jsonld-event') {
+      try {
+        const discovery = await discoverArtistSource(liveUrl.trim());
+        resolvedParserType = discovery.parserType;
+        resolvedSelectors = discovery.selectors;
+      } catch (discoveryError) {
+        const message = discoveryError instanceof Error
+          ? discoveryError.message
+          : 'URLから取得方法を判定できませんでした。';
+        return NextResponse.json({ error: message }, { status: 422 });
+      }
+    }
+
+    if (!resolvedSelectors.selectorItem && resolvedParserType !== 'jsonld-event') {
+      return NextResponse.json(
+        { error: '取得方法を自動判定できませんでした。詳細設定でContainer Selectorを指定してください。' },
+        { status: 422 }
       );
     }
 
@@ -53,12 +85,8 @@ export async function POST(request: Request) {
       id: artistId,
       name: name.trim(),
       liveUrl: liveUrl.trim(),
-      selectorItem: (selectorItem || '').trim(),
-      selectorTitle: (selectorTitle || '').trim(),
-      selectorDate: (selectorDate || '').trim(),
-      selectorVenue: (selectorVenue || '').trim(),
-      selectorLink: (selectorLink || '').trim(),
-      parserType,
+      ...resolvedSelectors,
+      parserType: resolvedParserType,
       lastSyncedAt: body.lastSyncedAt || null,
       status: body.status || 'idle',
       errorMessage: body.errorMessage || null,
