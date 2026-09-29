@@ -49,6 +49,7 @@ export async function runSync(artistId: string | undefined, trigger: 'manual' | 
         selectorDate: artist.selectorDate,
         selectorVenue: artist.selectorVenue,
         selectorLink: artist.selectorLink,
+        parserType: artist.parserType,
       });
 
       // Check existing events for this artist in the database

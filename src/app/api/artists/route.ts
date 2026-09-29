@@ -22,10 +22,13 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { id, name, liveUrl, selectorItem, selectorTitle, selectorDate, selectorVenue, selectorLink } = body;
+    const parserType = ['html', 'jsonld-event', 'legacy-json'].includes(body.parserType)
+      ? body.parserType
+      : undefined;
 
-    if (!name || !liveUrl || !selectorItem) {
+    if (!name || !liveUrl || (!selectorItem && parserType !== 'jsonld-event')) {
       return NextResponse.json(
-        { error: 'Name, Live URL, and Item Selector are required.' },
+        { error: 'Name and Live URL are required. HTML sources also need an item selector.' },
         { status: 400 }
       );
     }
@@ -50,11 +53,12 @@ export async function POST(request: Request) {
       id: artistId,
       name: name.trim(),
       liveUrl: liveUrl.trim(),
-      selectorItem: selectorItem.trim(),
+      selectorItem: (selectorItem || '').trim(),
       selectorTitle: (selectorTitle || '').trim(),
       selectorDate: (selectorDate || '').trim(),
       selectorVenue: (selectorVenue || '').trim(),
       selectorLink: (selectorLink || '').trim(),
+      parserType,
       lastSyncedAt: body.lastSyncedAt || null,
       status: body.status || 'idle',
       errorMessage: body.errorMessage || null,

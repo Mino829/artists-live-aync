@@ -23,6 +23,7 @@ export interface Artist {
   selectorDate: string;
   selectorVenue: string;
   selectorLink: string;
+  parserType?: 'html' | 'jsonld-event' | 'legacy-json';
   lastSyncedAt: string | null;
   status: 'idle' | 'syncing' | 'success' | 'failed';
   errorMessage: string | null;
@@ -82,6 +83,7 @@ const DEFAULT_DB: DatabaseSchema = {
       selectorDate: '.news_list_date',
       selectorVenue: 'p',
       selectorLink: 'a',
+      parserType: 'html',
       lastSyncedAt: null,
       status: 'idle',
       errorMessage: null,

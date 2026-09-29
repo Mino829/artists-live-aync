@@ -11,6 +11,7 @@ interface Artist {
   selectorDate: string;
   selectorVenue: string;
   selectorLink: string;
+  parserType?: 'html' | 'jsonld-event' | 'legacy-json';
   lastSyncedAt: string | null;
   status: 'idle' | 'syncing' | 'success' | 'failed';
   errorMessage: string | null;
@@ -33,6 +34,22 @@ interface ConsoleLog {
   timestamp: string;
   text: string;
   type: 'info' | 'success' | 'error' | 'default';
+}
+
+interface ArtistDiscovery {
+  parserType: 'html' | 'jsonld-event' | 'legacy-json';
+  selectors: {
+    selectorItem: string;
+    selectorTitle: string;
+    selectorDate: string;
+    selectorVenue: string;
+    selectorLink: string;
+  };
+  sourceLabel: string;
+  confidence: 'high' | 'medium' | 'low';
+  suggestedName: string;
+  warnings: string[];
+  items: { title: string; date: string; venue: string; link: string }[];
 }
 
 const PRESETS = [
@@ -262,6 +279,11 @@ export default function Dashboard() {
   const [selectorDateInput, setSelectorDateInput] = useState('');
   const [selectorVenueInput, setSelectorVenueInput] = useState('');
   const [selectorLinkInput, setSelectorLinkInput] = useState('');
+  const [parserTypeInput, setParserTypeInput] = useState<Artist['parserType']>();
+  const [discoveryResult, setDiscoveryResult] = useState<ArtistDiscovery | null>(null);
+  const [discoveryError, setDiscoveryError] = useState('');
+  const [isDiscoveringArtist, setIsDiscoveringArtist] = useState(false);
+  const [showAdvancedSelectors, setShowAdvancedSelectors] = useState(false);
   const [isSavingArtist, setIsSavingArtist] = useState(false);
 
   // Scraper Test State
@@ -596,13 +618,67 @@ export default function Dashboard() {
     setSelectorDateInput(preset.selectorDate);
     setSelectorVenueInput(preset.selectorVenue);
     setSelectorLinkInput(preset.selectorLink);
+    setParserTypeInput(preset.selectorItem === 'json' ? 'legacy-json' : 'html');
+    setDiscoveryResult(null);
+    setDiscoveryError('');
+    setShowAdvancedSelectors(true);
     setTestResults(null);
     addLog(`Applied preset: ${preset.name}`, 'default');
   };
 
+  const handleDiscoverArtist = async () => {
+    if (!artistLiveUrlInput.trim()) {
+      setDiscoveryError('公演・ニュースページのURLを入力してください。');
+      return;
+    }
+
+    setIsDiscoveringArtist(true);
+    setDiscoveryError('');
+    setDiscoveryResult(null);
+    addLog(`URLから公演情報の候補を解析しています: ${artistLiveUrlInput}`, 'info');
+
+    try {
+      const res = await fetch('/api/scrape/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': accessPassword },
+        body: JSON.stringify({
+          liveUrl: artistLiveUrlInput,
+          selectors: selectorItemInput.trim() ? {
+            selectorItem: selectorItemInput,
+            selectorTitle: selectorTitleInput,
+            selectorDate: selectorDateInput,
+            selectorVenue: selectorVenueInput,
+            selectorLink: selectorLinkInput,
+          } : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'URLを解析できませんでした。');
+
+      const result = data as ArtistDiscovery;
+      setDiscoveryResult(result);
+      setParserTypeInput(result.parserType);
+      setSelectorItemInput(result.selectors.selectorItem);
+      setSelectorTitleInput(result.selectors.selectorTitle);
+      setSelectorDateInput(result.selectors.selectorDate);
+      setSelectorVenueInput(result.selectors.selectorVenue);
+      setSelectorLinkInput(result.selectors.selectorLink);
+      if (!artistNameInput.trim()) setArtistNameInput(result.suggestedName);
+      setShowAdvancedSelectors(false);
+      addLog(`候補を${result.items.length}件確認しました（${result.sourceLabel}）。`, 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'URLを解析できませんでした。';
+      setDiscoveryError(message);
+      setShowAdvancedSelectors(true);
+      addLog(`候補を解析できませんでした: ${message}`, 'error');
+    } finally {
+      setIsDiscoveringArtist(false);
+    }
+  };
+
   const handleTestScraper = async () => {
-    if (!artistLiveUrlInput || !selectorItemInput) {
-      addLog('Live URL and Item Selector are required to test the scraper', 'error');
+    if (!artistLiveUrlInput || (!selectorItemInput && parserTypeInput !== 'jsonld-event')) {
+      addLog('Live URL and an available source configuration are required to test the scraper', 'error');
       return;
     }
 
@@ -624,6 +700,7 @@ export default function Dashboard() {
           selectorDate: selectorDateInput,
           selectorVenue: selectorVenueInput,
           selectorLink: selectorLinkInput,
+          parserType: parserTypeInput,
         }),
       });
 
@@ -659,7 +736,11 @@ export default function Dashboard() {
 
   const handleSaveArtist = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!artistNameInput || !artistLiveUrlInput || !selectorItemInput) {
+    if (!artistNameInput.trim() || !artistLiveUrlInput.trim() || (!selectorItemInput.trim() && parserTypeInput !== 'jsonld-event')) {
+      return;
+    }
+    if (!editingArtistId && !discoveryResult) {
+      setDiscoveryError('登録前にURLを解析し、サンプルを確認してください。');
       return;
     }
 
@@ -682,6 +763,7 @@ export default function Dashboard() {
           selectorDate: selectorDateInput,
           selectorVenue: selectorVenueInput,
           selectorLink: selectorLinkInput,
+          parserType: parserTypeInput,
         }),
       });
 
@@ -733,6 +815,10 @@ export default function Dashboard() {
     setSelectorDateInput(artist.selectorDate);
     setSelectorVenueInput(artist.selectorVenue);
     setSelectorLinkInput(artist.selectorLink);
+    setParserTypeInput(artist.parserType || (artist.selectorItem === 'json' ? 'legacy-json' : undefined));
+    setDiscoveryResult(null);
+    setDiscoveryError('');
+    setShowAdvancedSelectors(true);
     setTestResults(null);
     setActiveTab('artists');
   };
@@ -746,6 +832,10 @@ export default function Dashboard() {
     setSelectorDateInput('');
     setSelectorVenueInput('');
     setSelectorLinkInput('');
+    setParserTypeInput(undefined);
+    setDiscoveryResult(null);
+    setDiscoveryError('');
+    setShowAdvancedSelectors(false);
     setTestResults(null);
   };
 
@@ -1499,31 +1589,33 @@ export default function Dashboard() {
 
                 {/* Presets selecting header */}
                 {!editingArtistId && (
-                  <div>
-                    <span className="form-label" style={{ marginBottom: '0.35rem' }}>プリセットから選ぶ（選択後に取得テストできます）</span>
-                    <div className="presets-container">
+                  <details style={{ marginBottom: '1rem' }}>
+                    <summary style={{ cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                      対応サイトのプリセットを使う
+                    </summary>
+                    <div className="presets-container" style={{ marginTop: '0.75rem' }}>
                       {PRESETS.map((preset, index) => (
-                        <button
-                          type="button"
-                          key={index}
-                          className="preset-pill"
-                          onClick={() => handleApplyPreset(preset)}
-                        >
+                        <button type="button" key={index} className="preset-pill" onClick={() => handleApplyPreset(preset)}>
                           {preset.name}
                         </button>
                       ))}
                     </div>
-                  </div>
+                  </details>
                 )}
 
                 <form onSubmit={handleSaveArtist}>
+                  {!editingArtistId && (
+                    <p className="helper-text" style={{ marginTop: 0, marginBottom: '1rem' }}>
+                      URLを解析して、公演名・日程・会場のサンプルを確認してから登録します。
+                    </p>
+                  )}
                   <div className="responsive-form-grid two-columns">
                     <div className="form-group">
                       <label className="form-label">アーティスト名</label>
                       <input
                         type="text"
                         className="form-input"
-                        placeholder="e.g. 米津玄師 (Kenshi Yonezu)"
+                        placeholder="例: 米津玄師"
                         value={artistNameInput}
                         onChange={(e) => setArtistNameInput(e.target.value)}
                         required
@@ -1536,75 +1628,107 @@ export default function Dashboard() {
                         className="form-input"
                         placeholder="https://example.com/live/"
                         value={artistLiveUrlInput}
-                        onChange={(e) => setArtistLiveUrlInput(e.target.value)}
+                        onChange={(e) => {
+                          setDiscoveryError('');
+                          if (discoveryResult) {
+                            setDiscoveryResult(null);
+                            setParserTypeInput(undefined);
+                            setSelectorItemInput('');
+                            setSelectorTitleInput('');
+                            setSelectorDateInput('');
+                            setSelectorVenueInput('');
+                            setSelectorLinkInput('');
+                          }
+                          setArtistLiveUrlInput(e.target.value);
+                        }}
                         required
                       />
                     </div>
                   </div>
 
-                  <h3 style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', borderBottom: '1px dashed var(--border-color)', paddingBottom: '0.5rem', margin: '1.5rem 0 1rem 0' }}>
-                    取得項目の指定（CSSセレクター）
-                  </h3>
+                  {!editingArtistId && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', margin: '0.25rem 0 1rem' }}>
+                      <button type="button" className="btn" onClick={handleDiscoverArtist} disabled={isDiscoveringArtist || !artistLiveUrlInput.trim()}>
+                        {isDiscoveringArtist ? 'URLを解析中...' : discoveryResult ? 'もう一度解析' : 'URLを解析してサンプルを見る'}
+                      </button>
+                      <span className="helper-text" style={{ margin: 0 }}>登録前に取得内容を確認できます。</span>
+                    </div>
+                  )}
 
-                  <p className="helper-text">一覧の各項目から、公演名・日程・会場・リンクを見つけるための指定です。プリセットを使う場合は自動で入力されます。</p>
-                  <div className="responsive-form-grid two-columns">
-                    <div className="form-group">
-                      <label className="form-label">
-                        公演一覧の繰り返し要素（必須） <span style={{ color: 'var(--color-rose)' }}>*</span>
-                      </label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="e.g. li.news_list_body or div.live-item"
-                        value={selectorItemInput}
-                        onChange={(e) => setSelectorItemInput(e.target.value)}
-                        required
-                      />
+                  {discoveryError && (
+                    <div style={{ margin: '0.75rem 0', padding: '0.75rem 1rem', borderRadius: '8px', color: 'var(--color-rose)', background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)' }}>
+                      {discoveryError}
                     </div>
-                    <div className="form-group">
-                      <label className="form-label">公演名のセレクター</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="e.g. h1 or .title (relative)"
-                        value={selectorTitleInput}
-                        onChange={(e) => setSelectorTitleInput(e.target.value)}
-                      />
-                    </div>
+                  )}
+
+                  {discoveryResult && !editingArtistId && (
+                    <section className="test-preview-container" aria-label="解析した公演サンプル">
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                        <div>
+                          <strong style={{ color: 'var(--color-emerald)' }}>サンプルを確認してください</strong>
+                          <div className="helper-text" style={{ margin: '0.25rem 0 0' }}>
+                            取得元: {discoveryResult.sourceLabel} ・ 候補 {discoveryResult.items.length}件 ・ 確度: {{ high: '高', medium: '中', low: '要確認' }[discoveryResult.confidence]}
+                          </div>
+                        </div>
+                      </div>
+                      {discoveryResult.warnings.length > 0 && (
+                        <ul style={{ margin: '0 0 0.75rem', paddingLeft: '1.25rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                          {discoveryResult.warnings.map((warning, index) => <li key={index}>{warning}</li>)}
+                        </ul>
+                      )}
+                      <div style={{ maxHeight: '340px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {discoveryResult.items.map((item, index) => (
+                          <div key={`${item.link}-${index}`} className="preview-item">
+                            <div style={{ fontWeight: 600 }}>{item.title}</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.25rem 1rem', marginTop: '0.35rem', fontSize: '0.8rem' }}>
+                              <div><span className="preview-label">日程:</span> {item.date || '未取得'}</div>
+                              <div><span className="preview-label">会場:</span> {item.venue || '未取得'}</div>
+                            </div>
+                            <a href={item.link} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: '0.3rem', fontSize: '0.75rem', color: 'var(--color-cyan)', overflowWrap: 'anywhere' }}>
+                              サンプルの詳細を開く ↗
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+
+                  <div style={{ marginTop: '1rem' }}>
+                    <button type="button" className="btn btn-secondary" style={{ fontSize: '0.85rem' }} onClick={() => setShowAdvancedSelectors((open) => !open)}>
+                      {showAdvancedSelectors ? '詳細設定を閉じる' : '自動解析できない場合: 詳細設定'}
+                    </button>
                   </div>
 
-                  <div className="responsive-form-grid three-columns">
-                    <div className="form-group">
-                      <label className="form-label">日程のセレクター</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="e.g. .date or time (relative)"
-                        value={selectorDateInput}
-                        onChange={(e) => setSelectorDateInput(e.target.value)}
-                      />
+                  {showAdvancedSelectors && (
+                    <div style={{ marginTop: '1rem', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+                      <h3 style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem' }}>取得項目の詳細設定</h3>
+                      <p className="helper-text">解析候補が違う場合だけ変更してください。プリセットを使う場合は入力済みです。</p>
+                      <div className="responsive-form-grid two-columns">
+                        <div className="form-group">
+                          <label className="form-label">公演一覧の繰り返し要素</label>
+                          <input type="text" className="form-input" placeholder="例: li.live-item" value={selectorItemInput} onChange={(e) => { setSelectorItemInput(e.target.value); setDiscoveryResult(null); }} />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">公演名</label>
+                          <input type="text" className="form-input" placeholder="例: .title" value={selectorTitleInput} onChange={(e) => { setSelectorTitleInput(e.target.value); setDiscoveryResult(null); }} />
+                        </div>
+                      </div>
+                      <div className="responsive-form-grid three-columns">
+                        <div className="form-group">
+                          <label className="form-label">日程</label>
+                          <input type="text" className="form-input" placeholder="例: time@datetime" value={selectorDateInput} onChange={(e) => { setSelectorDateInput(e.target.value); setDiscoveryResult(null); }} />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">会場</label>
+                          <input type="text" className="form-input" placeholder="例: .venue" value={selectorVenueInput} onChange={(e) => { setSelectorVenueInput(e.target.value); setDiscoveryResult(null); }} />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">詳細リンク</label>
+                          <input type="text" className="form-input" placeholder="例: a@href" value={selectorLinkInput} onChange={(e) => { setSelectorLinkInput(e.target.value); setDiscoveryResult(null); }} />
+                        </div>
+                      </div>
                     </div>
-                    <div className="form-group">
-                      <label className="form-label">会場のセレクター</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="e.g. .venue or p (relative)"
-                        value={selectorVenueInput}
-                        onChange={(e) => setSelectorVenueInput(e.target.value)}
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">詳細リンクのセレクター</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="e.g. a or .btn (relative)"
-                        value={selectorLinkInput}
-                        onChange={(e) => setSelectorLinkInput(e.target.value)}
-                      />
-                    </div>
-                  </div>
+                  )}
 
                   {/* Realtime test results pane */}
                   {testResults && (
@@ -1661,14 +1785,14 @@ export default function Dashboard() {
                   )}
 
                   <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.25rem' }}>
-                    <button type="submit" className="btn" disabled={isSavingArtist}>
-                      {isSavingArtist ? '保存中...' : editingArtistId ? '変更を保存' : 'アーティストを登録'}
+                    <button type="submit" className="btn" disabled={isSavingArtist || (!editingArtistId && !discoveryResult)}>
+                      {isSavingArtist ? '保存中...' : editingArtistId ? '変更を保存' : '確認して登録・初回取得'}
                     </button>
                     <button
                       type="button"
                       className="btn btn-secondary"
                       onClick={handleTestScraper}
-                      disabled={isTestingScraper || !artistLiveUrlInput || !selectorItemInput}
+                      disabled={isTestingScraper || !artistLiveUrlInput || (!selectorItemInput && parserTypeInput !== 'jsonld-event')}
                     >
                       {isTestingScraper ? (
                         <>
