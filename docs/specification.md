@@ -19,6 +19,9 @@ This document details the core requirements, data models, database structures, a
    * Connect to Notion via an Integration Token and Database ID.
    * Sync unsynced events (those with `notionPageId === null`).
    * Automatically detect and create required database columns (properties) in Notion if they do not exist.
+5. **External Availability Monitoring:**
+   * Expose an unauthenticated health endpoint for external monitors such as Uptime Kuma.
+   * Configure outage notifications in the external monitor, independently of new-event notifications.
 
 ---
 
