@@ -15,6 +15,7 @@ export interface ScraperOptions {
   selectorDate: string;
   selectorVenue: string;
   selectorLink: string;
+  parserType?: 'html' | 'jsonld-event' | 'legacy-json';
 }
 
 /**
@@ -24,6 +25,67 @@ function cleanText(text: string): string {
   return text
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function flattenJsonLd(value: unknown): Record<string, any>[] {
+  if (Array.isArray(value)) return value.flatMap(flattenJsonLd);
+  if (!value || typeof value !== 'object') return [];
+
+  const record = value as Record<string, any>;
+  const nested = [
+    ...flattenJsonLd(record['@graph']),
+    ...flattenJsonLd(record.itemListElement),
+    ...flattenJsonLd(record.item),
+    ...flattenJsonLd(record.mainEntity),
+  ];
+  return [record, ...nested];
+}
+
+/** Parse only explicit Schema.org Event records; article publish dates are not event dates. */
+export function extractJsonLdEvents(content: string, liveUrl: string): ScrapedEvent[] {
+  const $ = cheerio.load(content);
+  const records: Record<string, any>[] = [];
+
+  $('script[type="application/ld+json"]').each((_, script) => {
+    const raw = $(script).contents().text().trim();
+    if (!raw) return;
+    try {
+      records.push(...flattenJsonLd(JSON.parse(raw)));
+    } catch {
+      // Ignore malformed JSON-LD blocks and keep looking for usable records.
+    }
+  });
+
+  return records.flatMap((record) => {
+    const types = Array.isArray(record['@type']) ? record['@type'] : [record['@type']];
+    const isEvent = types.some((type) =>
+      typeof type === 'string' && /(?:^|[/#])(?:Event|MusicEvent|Concert)$/i.test(type)
+    );
+    if (!isEvent || typeof record.name !== 'string' || !record.name.trim()) return [];
+
+    const location = record.location;
+    const venue = typeof location === 'string'
+      ? location
+      : typeof location?.name === 'string'
+        ? location.name
+        : '';
+    let link = liveUrl;
+    const rawLink = record.url || record['@id'];
+    if (typeof rawLink === 'string') {
+      try {
+        link = new URL(rawLink, liveUrl).href;
+      } catch {
+        // Keep the source page URL if the event URL is malformed.
+      }
+    }
+
+    return [{
+      title: cleanText(record.name),
+      date: typeof record.startDate === 'string' ? cleanText(record.startDate) : '',
+      venue: cleanText(venue),
+      link,
+    }];
+  });
 }
 
 /**
@@ -42,7 +104,7 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
   if (!liveUrl) {
     throw new Error('Live URL is required');
   }
-  if (!selectorItem) {
+  if (!selectorItem && options.parserType !== 'jsonld-event') {
     throw new Error('Item selector is required');
   }
 
@@ -53,6 +115,7 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
     },
+    signal: AbortSignal.timeout(15000),
   });
 
   if (!response.ok) {
@@ -61,8 +124,12 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
 
   const content = await response.text();
 
+  if (options.parserType === 'jsonld-event') {
+    return extractJsonLdEvents(content, liveUrl);
+  }
+
   // Try to parse as JSON / JSONP first (to support dynamic APIs like Sony Music / King Gnu)
-  try {
+  if (options.parserType !== 'html') try {
     let jsonString = content.trim();
     
     // Check if the content is HTML and contains __NEXT_DATA__
@@ -129,14 +196,10 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
       const results: ScrapedEvent[] = [];
       for (const item of list) {
         const title = cleanText(item.title || item.name || item.subject || '');
-        const date = cleanText(item.date || item.publishedAt || item.createdAt || '');
+        // Publication timestamps are not event dates. Only trust an explicit event date field.
+        const date = cleanText(item.date || '');
         
-        let category = '';
-        if (item.category && typeof item.category === 'object') {
-          category = cleanText(item.category.name || item.category.slug || '');
-        } else {
-          category = cleanText(item.category || item.venue || '');
-        }
+        const venue = cleanText(item.venue || '');
         
         let link = liveUrl;
         if (item.slug) {
@@ -160,7 +223,7 @@ export async function scrapeLiveInfo(options: ScraperOptions): Promise<ScrapedEv
           results.push({
             title,
             date,
-            venue: category,
+            venue,
             link,
           });
         }

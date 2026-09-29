@@ -8,11 +8,11 @@ export async function POST(request: Request) {
   }
   try {
     const body = await request.json();
-    const { liveUrl, selectorItem, selectorTitle, selectorDate, selectorVenue, selectorLink } = body;
+    const { liveUrl, selectorItem, selectorTitle, selectorDate, selectorVenue, selectorLink, parserType } = body;
 
-    if (!liveUrl || !selectorItem) {
+    if (!liveUrl || (!selectorItem && parserType !== 'jsonld-event')) {
       return NextResponse.json(
-        { error: 'Live URL and Item Selector are required to test scraping.' },
+        { error: 'Live URL and a valid source configuration are required to test scraping.' },
         { status: 400 }
       );
     }
@@ -25,6 +25,7 @@ export async function POST(request: Request) {
         selectorDate: (selectorDate || '').trim(),
         selectorVenue: (selectorVenue || '').trim(),
         selectorLink: (selectorLink || '').trim(),
+        parserType,
       });
 
       return NextResponse.json({
